@@ -17,7 +17,7 @@ import ChatPanel from './ChatPanel';
  * Dashboard component that displays detailed project information
  * Includes AI summary, contributors, commits, documentation, and chat
  */
-function Dashboard({ projectId, onBack }) {
+function Dashboard({ projectId, onBack, accessToken }) {
   // State for project data, loading, and error handling
   const [projectData, setProjectData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -25,7 +25,7 @@ function Dashboard({ projectId, onBack }) {
   const [isChatVisible, setIsChatVisible] = useState(false);
 
   // Backend URL from environment variables
-  const backendUrl = import.meta.env.VITE_BACKEND_URL;
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
 
   /**
    * Fetch project details from the backend API
@@ -35,9 +35,17 @@ function Dashboard({ projectId, onBack }) {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}`);
+      const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
       
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication expired. Please login again.');
+        }
         throw new Error(`Failed to fetch project data: ${response.status}`);
       }
       
@@ -45,7 +53,7 @@ function Dashboard({ projectId, onBack }) {
       setProjectData(data);
     } catch (err) {
       console.error('Error fetching project data:', err);
-      setError('Failed to load project data. Please try again.');
+      setError(err.message || 'Failed to load project data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -53,10 +61,10 @@ function Dashboard({ projectId, onBack }) {
 
   // Fetch project data on component mount or projectId change
   useEffect(() => {
-    if (projectId) {
+    if (projectId && accessToken) {
       fetchProjectData();
     }
-  }, [projectId]);
+  }, [projectId, accessToken]);
 
   /**
    * Format date to readable string
@@ -313,7 +321,7 @@ function Dashboard({ projectId, onBack }) {
         {/* Right Column - AI Chat Panel */}
         {isChatVisible && (
           <div className="lg:col-span-4 transition-all duration-300">
-            <ChatPanel projectId={projectId} />
+            <ChatPanel projectId={projectId} accessToken={accessToken} />
           </div>
         )}
       </div>

@@ -1,35 +1,25 @@
 # FILE: api/v1/endpoints/projects.py (Updated)
 # ----------------------
-from fastapi import APIRouter, HTTPException
+# This now fetches projects dynamically for the logged-in user.
+from fastapi import APIRouter, Depends
 from typing import List
-from models.project import Project, ProjectDetails
-from services import github_service, ai_service
-from core.config import PROJECT_REPOS
+from models.user import UserInDB
+from models.project import Project
+from services import github_service
+from api.v1.dependencies import get_current_user
 
 router = APIRouter()
 
 @router.get("/", response_model=List[Project])
-def list_projects():
+def list_user_and_contributed_projects(current_user: UserInDB = Depends(get_current_user)):
     """
-    Returns a list of the projects configured in the .env file.
+    Returns a list of the current user's own public repos and repos
+    they have contributed to.
     """
-    projects = [{"id": repo, "name": repo} for repo in PROJECT_REPOS]
-    return projects
+    user_repos = github_service.get_user_repos_for_user(current_user)
+    return [{"id": repo['full_name'], "name": repo['full_name']} for repo in user_repos]
 
-@router.get("/{project_id:path}", response_model=ProjectDetails)
-def get_project_dashboard(project_id: str):
-    """
-    Fetches live dashboard details and an AI summary for a specific project.
-    """
-    if project_id not in PROJECT_REPOS:
-        raise HTTPException(status_code=404, detail="Project not found")
-    
-    details = github_service.get_live_project_details(project_id)
-    summary = ai_service.summarize_project(project_id)
-    
-    # Combine the data into the response model
-    response_data = {
-        "summary": summary,
-        **details
-    }
-    return response_data
+# The rest of the project and chat endpoints can remain largely the same,
+# but their internal logic will now rely on the user's token for any
+# GitHub API calls if needed. The security dependency `Depends(get_current_user)`
+# ensures only logged-in users can access them.
