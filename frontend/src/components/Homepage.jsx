@@ -3,9 +3,9 @@ import { Github, Loader2, AlertCircle, Search, X, Filter } from 'lucide-react';
 
 /**
  * Homepage component that displays a grid of available GitHub projects
- * Fetches project list from the backend API
+ * Fetches project list from the backend API using user's authentication
  */
-function Homepage({ onProjectSelect, initialSearchQuery }) {
+function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
   // State for projects data, loading, and error handling
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,7 +18,7 @@ function Homepage({ onProjectSelect, initialSearchQuery }) {
   const [isSearching, setIsSearching] = useState(false);
 
   // Backend URL from environment variables
-  const backendUrl = import.meta.env.VITE_BACKEND_URL;
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
 
   /**
    * Fetch projects from the backend API
@@ -28,9 +28,17 @@ function Homepage({ onProjectSelect, initialSearchQuery }) {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`${backendUrl}/api/v1/projects/`);
+      const response = await fetch(`${backendUrl}/api/v1/projects/`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
       
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication expired. Please login again.');
+        }
         throw new Error(`Failed to fetch projects: ${response.status}`);
       }
       
@@ -39,7 +47,7 @@ function Homepage({ onProjectSelect, initialSearchQuery }) {
       setFilteredProjects(data);
     } catch (err) {
       console.error('Error fetching projects:', err);
-      setError('Failed to load projects. Please check your connection and try again.');
+      setError(err.message || 'Failed to load projects. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -69,7 +77,12 @@ function Homepage({ onProjectSelect, initialSearchQuery }) {
       const contentResults = [];
       for (const project of projects) {
         try {
-          const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(project.id)}`);
+          const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(project.id)}`, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+          });
           if (response.ok) {
             const projectData = await response.json();
 
@@ -155,10 +168,12 @@ function Homepage({ onProjectSelect, initialSearchQuery }) {
     setIsSearching(false);
   };
 
-  // Fetch projects on component mount
+  // Fetch projects on component mount or when accessToken changes
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    if (accessToken) {
+      fetchProjects();
+    }
+  }, [accessToken]);
 
   // Handle initial search query
   useEffect(() => {
@@ -173,7 +188,7 @@ function Homepage({ onProjectSelect, initialSearchQuery }) {
     return (
       <div className="flex flex-col items-center justify-center min-h-96">
         <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
-        <p className="text-gray-400 text-lg">Loading projects...</p>
+        <p className="text-gray-400 text-lg">Loading your repositories...</p>
       </div>
     );
   }
@@ -199,10 +214,10 @@ function Homepage({ onProjectSelect, initialSearchQuery }) {
       {/* Welcome section */}
       <div className="text-center mb-12">
         <h2 className="text-4xl font-bold text-white mb-4">
-          Welcome to Kortex
+          Your GitHub Repositories
         </h2>
         <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-8">
-          Explore GitHub repositories with AI-powered insights.
+          Explore your repositories with AI-powered insights.
           Get summaries, ask questions, and understand codebases faster.
         </p>
 
@@ -317,10 +332,11 @@ function Homepage({ onProjectSelect, initialSearchQuery }) {
       </div>
 
       {/* Empty state */}
-      {projects.length === 0 && !searchQuery && (
+      {projects.length === 0 && !loading && !searchQuery && (
         <div className="text-center py-12">
           <Github className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-400 text-lg">No projects available</p>
+          <p className="text-gray-400 text-lg mb-2">No repositories found</p>
+          <p className="text-gray-500 text-sm">You don't have any public repositories or the repositories are not accessible.</p>
         </div>
       )}
 

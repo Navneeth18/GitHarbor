@@ -5,7 +5,7 @@ import { Send, Bot, User, Loader2, ExternalLink } from 'lucide-react';
  * ChatPanel component for interactive AI conversations about the project
  * Handles question submission and displays chat history with sources
  */
-function ChatPanel({ projectId }) {
+function ChatPanel({ projectId, accessToken }) {
   // State for chat messages, input, and loading
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState('');
@@ -13,7 +13,7 @@ function ChatPanel({ projectId }) {
   const [error, setError] = useState(null);
 
   // Backend URL from environment variables
-  const backendUrl = import.meta.env.VITE_BACKEND_URL;
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
 
   /**
    * Handle form submission to ask a question
@@ -42,6 +42,7 @@ function ChatPanel({ projectId }) {
       const response = await fetch(`${backendUrl}/api/v1/chat/ask`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -51,6 +52,9 @@ function ChatPanel({ projectId }) {
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication expired. Please login again.');
+        }
         throw new Error(`Failed to get response: ${response.status}`);
       }
 
@@ -67,7 +71,7 @@ function ChatPanel({ projectId }) {
       setMessages(prev => [...prev, aiMessage]);
     } catch (err) {
       console.error('Error asking question:', err);
-      setError('Failed to get response. Please try again.');
+      setError(err.message || 'Failed to get response. Please try again.');
       
       // Add error message to chat
       const errorMessage = {

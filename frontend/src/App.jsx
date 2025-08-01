@@ -2,20 +2,52 @@ import React, { useState, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 import Homepage from './components/Homepage';
 import Dashboard from './components/Dashboard';
+import LoginPage from './components/LoginPage';
 import MessagingPage from './components/MessagingPage';
 import FullDocumentation from './components/FullDocumentation';
 
 /**
- * Main App component that handles routing between Homepage and Dashboard
+ * Main App component that handles routing between Login, Homepage and Dashboard
  * Uses simple state-based routing instead of react-router-dom
  */
 function App() {
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [accessToken, setAccessToken] = useState(null);
+
   // Page state to handle navigation - 'home', 'dashboard', 'messaging', or 'docs'
   const [page, setPage] = useState({ name: 'home', projectId: null });
 
   // Global search state
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+
+  // Check for existing token on app load
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      setAccessToken(token);
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  /**
+   * Handle successful login
+   */
+  const handleLoginSuccess = (token) => {
+    setAccessToken(token);
+    setIsAuthenticated(true);
+  };
+
+  /**
+   * Handle logout
+   */
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    setAccessToken(null);
+    setIsAuthenticated(false);
+    setPage({ name: 'home', projectId: null });
+  };
 
   /**
    * Navigation function to switch between pages
@@ -90,6 +122,11 @@ function App() {
     };
   }, [showGlobalSearch]);
 
+  // Show login page if not authenticated
+  if (!isAuthenticated) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Header with Kortex branding and navigation */}
@@ -150,6 +187,12 @@ function App() {
                 💬 Chat
               </button>
               <p className="text-gray-400 text-sm hidden md:block">GitHub Knowledge Transfer Platform</p>
+              <button
+                onClick={handleLogout}
+                className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                Logout
+              </button>
             </div>
           </div>
         </div>
@@ -163,12 +206,14 @@ function App() {
               navigateTo({ name: 'dashboard', projectId })
             }
             initialSearchQuery={page.searchQuery}
+            accessToken={accessToken}
           />
         )}
         {page.name === 'dashboard' && (
           <Dashboard
             projectId={page.projectId}
             onBack={() => navigateTo({ name: 'home', projectId: null })}
+            accessToken={accessToken}
           />
         )}
         {page.name === 'messaging' && (

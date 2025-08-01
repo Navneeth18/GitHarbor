@@ -1,13 +1,11 @@
+
 # FILE: main.py (Updated)
 # ----------------------
-# This is the main entry point for the FastAPI application.
-# The on_startup event has been removed.
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.v1.api import api_router
+from services.db_service import client # Import the client
 
-# Create the FastAPI app instance
 app = FastAPI(title="Kortex AI Backend")
 
 # --- CORS (Cross-Origin Resource Sharing) ---
@@ -26,11 +24,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- API Router ---
+# --- NEW: Add a shutdown event to close the DB connection ---
+@app.on_event("shutdown")
+def shutdown_db_client():
+    client.close()
+    print("MongoDB connection closed.")
+
 app.include_router(api_router, prefix="/api/v1")
 
-# --- Root Endpoint ---
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to the Kortex AI Backend (Live API Version)"}
-
+    return {"message": "Welcome to the Kortex AI Backend (v2 with Auth)"}
