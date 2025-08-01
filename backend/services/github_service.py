@@ -35,6 +35,7 @@ def get_user_repos_for_user(user: UserInDB) -> List[Dict[str, Any]]:
 def get_live_project_details(project_id: str, user: UserInDB = None) -> Dict[str, Any]:
     """ Fetches high-level project details for the dashboard including pushes and merges. """
     print(f"Fetching LIVE data for {project_id} dashboard...")
+    print(f"User: {user.username if user else 'None'}")
 
     # API endpoints
     commits_url = f"{REPOS_BASE_URL}{project_id}/commits?per_page=15"
@@ -50,16 +51,39 @@ def get_live_project_details(project_id: str, user: UserInDB = None) -> Dict[str
         try:
             decrypted_token = encryption_service.decrypt_token(user.encrypted_github_token)
             headers["Authorization"] = f"token {decrypted_token}"
+            print(f"Using user's GitHub token for API calls")
         except Exception as e:
             print(f"Failed to decrypt user token: {e}")
+    else:
+        print(f"No user token available, using public API")
 
     # Make API requests
+    print(f"Making API requests to GitHub...")
     commits_response = requests.get(commits_url, headers=headers)
     prs_response = requests.get(prs_url, headers=headers)
     contributors_response = requests.get(contributors_url, headers=headers)
     readme_response = requests.get(readme_url, headers=headers)
     events_response = requests.get(events_url, headers=headers)
     repo_response = requests.get(repo_url, headers=headers)
+
+    # Log response statuses
+    print(f"API Response Statuses:")
+    print(f"  Commits: {commits_response.status_code}")
+    print(f"  PRs: {prs_response.status_code}")
+    print(f"  Contributors: {contributors_response.status_code}")
+    print(f"  README: {readme_response.status_code}")
+    print(f"  Events: {events_response.status_code}")
+    print(f"  Repo: {repo_response.status_code}")
+
+    # Check if any critical requests failed
+    if repo_response.status_code == 404:
+        print(f"ERROR: Repository {project_id} not found or access denied")
+        raise Exception(f"Repository {project_id} not found or access denied")
+    
+    if repo_response.status_code != 200:
+        print(f"ERROR: Repository API failed with status {repo_response.status_code}")
+        print(f"Response: {repo_response.text}")
+        raise Exception(f"GitHub API error: {repo_response.status_code}")
 
     # Process README content
     readme_content = ""
