@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, 
-  BrainCircuit, 
-  Users, 
-  GitCommit, 
+import {
+  ArrowLeft,
+  BrainCircuit,
+  Users,
+  GitCommit,
   BookOpen,
   Loader2,
-  AlertCircle 
+  AlertCircle,
+  MessageCircle,
+  X
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import ChatPanel from './ChatPanel';
@@ -20,6 +22,7 @@ function Dashboard({ projectId, onBack }) {
   const [projectData, setProjectData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isChatVisible, setIsChatVisible] = useState(false);
 
   // Backend URL from environment variables
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
@@ -162,17 +165,42 @@ function Dashboard({ projectId, onBack }) {
 
   return (
     <div className="space-y-6">
-      {/* Header with back button and project name */}
-      <div className="flex items-center space-x-4 mb-8">
+      {/* Header with back button, project name, and chat toggle */}
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={onBack}
+            className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span>Back to Projects</span>
+          </button>
+          <div className="h-6 w-px bg-gray-600"></div>
+          <h1 className="text-2xl font-bold text-white">{projectId}</h1>
+        </div>
+
+        {/* Chat Toggle Button */}
         <button
-          onClick={onBack}
-          className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors"
+          onClick={() => setIsChatVisible(!isChatVisible)}
+          className={`fixed top-20 right-6 z-50 flex items-center space-x-2 px-4 py-2 rounded-lg shadow-lg transition-all duration-200 ${
+            isChatVisible
+              ? 'bg-red-600 hover:bg-red-700 text-white'
+              : 'bg-blue-600 hover:bg-blue-700 text-white'
+          }`}
+          style={{ position: 'fixed', top: '80px', right: '24px' }}
         >
-          <ArrowLeft className="w-5 h-5" />
-          <span>Back to Projects</span>
+          {isChatVisible ? (
+            <>
+              <X className="w-5 h-5" />
+              <span>Close</span>
+            </>
+          ) : (
+            <>
+              <MessageCircle className="w-5 h-5" />
+              <span>CB</span>
+            </>
+          )}
         </button>
-        <div className="h-6 w-px bg-gray-600"></div>
-        <h1 className="text-2xl font-bold text-white">{projectId}</h1>
       </div>
 
       {/* Three-column layout */}
@@ -249,13 +277,13 @@ function Dashboard({ projectId, onBack }) {
         </div>
 
         {/* Center Column - Documentation */}
-        <div className="lg:col-span-6">
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+        <div className={`${isChatVisible ? 'lg:col-span-5' : 'lg:col-span-9'} transition-all duration-300`}>
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 h-[750px] flex flex-col">
             <div className="flex items-center space-x-2 mb-6">
               <BookOpen className="w-5 h-5 text-purple-400" />
               <h3 className="text-lg font-semibold text-white">Documentation</h3>
             </div>
-            <div className="prose prose-invert prose-sm max-w-none">
+            <div className="prose prose-invert prose-sm max-w-none flex-1 overflow-y-auto scrollbar-hide">
               {projectData?.documentation ? (
                 <ReactMarkdown
                   components={{
@@ -283,9 +311,11 @@ function Dashboard({ projectId, onBack }) {
         </div>
 
         {/* Right Column - AI Chat Panel */}
-        <div className="lg:col-span-3">
-          <ChatPanel projectId={projectId} />
-        </div>
+        {isChatVisible && (
+          <div className="lg:col-span-4 transition-all duration-300">
+            <ChatPanel projectId={projectId} />
+          </div>
+        )}
       </div>
     </div>
   );
