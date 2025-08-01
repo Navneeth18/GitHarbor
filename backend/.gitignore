@@ -1,0 +1,32 @@
+# --- Environment ---
+# Ignore the virtual environment folder
+venv/
+env/
+
+# Ignore the .env file which contains secrets like API keys
+.env
+
+# --- Python ---
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- IDE / Editor ---
+# Visual Studio Code
+.vscode/
+
+# JetBrains / PyCharm
+.idea/
+
+# --- Data ---
+# Ignore the data directory that caches GitHub API responses
+data/
+
+# --- Operating System ---
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db

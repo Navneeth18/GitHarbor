@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+google-generativeai
+chromadb
+pydantic
+
+# Add this for fetching data from GitHub API initially
+# You can remove it after you have your data files.
+requests
+
+dotenv
