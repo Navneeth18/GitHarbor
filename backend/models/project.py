@@ -12,3 +12,6 @@ class ProjectDetails(BaseModel):
     pull_requests: List[Dict[str, Any]]
     contributors: List[Dict[str, Any]]
     documentation: str
+    pushes: List[Dict[str, Any]]  # Push events information
+    merges: List[Dict[str, Any]]  # Merge information from pull requests
+    repository_stats: Dict[str, Any]  # Additional repository statistics
