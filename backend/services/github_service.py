@@ -32,7 +32,7 @@ def get_user_repos_for_user(user: UserInDB) -> List[Dict[str, Any]]:
     return user_repos
 
 @lru_cache(maxsize=32)
-def get_live_project_details(project_id: str) -> Dict[str, Any]:
+def get_live_project_details(project_id: str, user: UserInDB = None) -> Dict[str, Any]:
     """ Fetches high-level project details for the dashboard including pushes and merges. """
     print(f"Fetching LIVE data for {project_id} dashboard...")
 
@@ -44,9 +44,14 @@ def get_live_project_details(project_id: str) -> Dict[str, Any]:
     events_url = f"{REPOS_BASE_URL}{project_id}/events?per_page=30"  # For push events
     repo_url = f"{REPOS_BASE_URL}{project_id}"  # For repository stats
 
-    # For now, we'll use a basic header without authentication for public repos
-    # In a production system, you'd want to use the user's token for better rate limits
+    # Use user's token if available, otherwise use basic headers
     headers = {"Accept": "application/vnd.github.v3+json"}
+    if user and user.encrypted_github_token:
+        try:
+            decrypted_token = encryption_service.decrypt_token(user.encrypted_github_token)
+            headers["Authorization"] = f"token {decrypted_token}"
+        except Exception as e:
+            print(f"Failed to decrypt user token: {e}")
 
     # Make API requests
     commits_response = requests.get(commits_url, headers=headers)
