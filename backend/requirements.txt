@@ -1,12 +1,15 @@
+# FILE: requirements.txt
+# ----------------------
 fastapi
 uvicorn[standard]
 python-dotenv
 google-generativeai
 chromadb
 pydantic
-
-# Add this for fetching data from GitHub API initially
-# You can remove it after you have your data files.
 requests
+pymongo[srv]
+python-jose[cryptography]
+python-multipart
 
-dotenv
+# --- NEW DEPENDENCY ---
+cryptography # For encrypting user tokens
