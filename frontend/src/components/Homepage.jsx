@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Github, Loader2, AlertCircle, Search, X, Filter } from 'lucide-react';
+import { Github, Loader2, AlertCircle, Search, X, Filter, Globe } from 'lucide-react';
+import GlobalSearch from './GlobalSearch';
 
 /**
  * Homepage component that displays a grid of available GitHub projects
@@ -16,6 +17,7 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
   const [filteredProjects, setFilteredProjects] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
 
   // Backend URL from environment variables
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
@@ -256,22 +258,33 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
             )}
           </div>
 
-          {/* Search Stats */}
-          {searchQuery && (
-            <div className="mt-3 text-sm text-gray-400 flex items-center justify-center space-x-4">
-              <span>
-                {filteredProjects.length} project{filteredProjects.length !== 1 ? 's' : ''} found
-              </span>
-              {searchResults.length > 0 && (
-                <>
-                  <span>•</span>
-                  <span>
-                    {searchResults.length} content match{searchResults.length !== 1 ? 'es' : ''}
-                  </span>
-                </>
-              )}
-            </div>
-          )}
+          {/* Search Stats and Global Search Button */}
+          <div className="mt-3 flex items-center justify-center space-x-4">
+            {searchQuery && (
+              <div className="text-sm text-gray-400 flex items-center space-x-4">
+                <span>
+                  {filteredProjects.length} project{filteredProjects.length !== 1 ? 's' : ''} found
+                </span>
+                {searchResults.length > 0 && (
+                  <>
+                    <span>•</span>
+                    <span>
+                      {searchResults.length} content match{searchResults.length !== 1 ? 'es' : ''}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Global Search Button */}
+            <button
+              onClick={() => setShowGlobalSearch(true)}
+              className="flex items-center space-x-2 text-blue-400 hover:text-blue-300 transition-colors text-sm"
+            >
+              <Globe className="w-4 h-4" />
+              <span>Search all of GitHub</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -360,6 +373,14 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
             Clear Search
           </button>
         </div>
+      )}
+
+      {/* Global Search Modal */}
+      {showGlobalSearch && (
+        <GlobalSearch
+          accessToken={accessToken}
+          onClose={() => setShowGlobalSearch(false)}
+        />
       )}
     </div>
   );

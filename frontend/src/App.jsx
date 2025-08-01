@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Globe } from 'lucide-react';
 import Homepage from './components/Homepage';
 import Dashboard from './components/Dashboard';
 import LoginPage from './components/LoginPage';
 import MessagingPage from './components/MessagingPage';
 import FullDocumentation from './components/FullDocumentation';
+import GlobalSearch from './components/GlobalSearch';
 
 /**
  * Main App component that handles routing between Login, Homepage and Dashboard
@@ -21,6 +22,7 @@ function App() {
   // Global search state
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [showGlobalSearchModal, setShowGlobalSearchModal] = useState(false);
 
   // Check for existing token on app load
   useEffect(() => {
@@ -32,6 +34,27 @@ function App() {
       validateToken(token);
     }
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+K or Cmd+K to open global search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        if (isAuthenticated) {
+          setShowGlobalSearchModal(true);
+        }
+      }
+      // Escape to close global search
+      if (e.key === 'Escape') {
+        setShowGlobalSearchModal(false);
+        setShowGlobalSearch(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isAuthenticated]);
 
   /**
    * Validate stored token with backend
@@ -137,15 +160,19 @@ function App() {
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ctrl/Cmd + K to open search
+      // Ctrl/Cmd + K to open global search
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        setShowGlobalSearch(true);
+        setShowGlobalSearchModal(true);
       }
       // Escape to close search
-      if (e.key === 'Escape' && showGlobalSearch) {
-        setShowGlobalSearch(false);
-        setGlobalSearchQuery('');
+      if (e.key === 'Escape') {
+        if (showGlobalSearchModal) {
+          setShowGlobalSearchModal(false);
+        } else if (showGlobalSearch) {
+          setShowGlobalSearch(false);
+          setGlobalSearchQuery('');
+        }
       }
     };
 
@@ -154,7 +181,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [showGlobalSearch]);
+  }, [showGlobalSearch, showGlobalSearchModal]);
 
   // Show login page if not authenticated
   if (!isAuthenticated) {
@@ -177,7 +204,7 @@ function App() {
               <h1 className="text-2xl font-bold text-white">Kortex</h1>
             </div>
             <div className="flex items-center space-x-6">
-              {/* Global Search */}
+              {/* Local Search */}
               {showGlobalSearch ? (
                 <div className="flex items-center space-x-2">
                   <div className="relative">
@@ -190,7 +217,7 @@ function App() {
                           handleGlobalSearch(globalSearchQuery);
                         }
                       }}
-                      placeholder="Search repositories..."
+                      placeholder="Search your repositories..."
                       className="w-64 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       autoFocus
                     />
@@ -206,13 +233,23 @@ function App() {
                 <button
                   onClick={toggleGlobalSearch}
                   className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-lg hover:bg-gray-700"
-                  title="Search (Ctrl+K)"
+                  title="Search your repos (Ctrl+K for global)"
                 >
                   <Search className="w-4 h-4" />
-                  <span className="hidden sm:inline">Search</span>
-                  <span className="hidden lg:inline text-xs text-gray-500 ml-2">⌘K</span>
+                  <span className="hidden sm:inline">Local Search</span>
                 </button>
               )}
+
+              {/* Global Search Button */}
+              <button
+                onClick={() => setShowGlobalSearchModal(true)}
+                className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-lg hover:bg-gray-700"
+                title="Global GitHub Search (Ctrl+K)"
+              >
+                <Globe className="w-4 h-4" />
+                <span className="hidden sm:inline">Global Search</span>
+                <span className="hidden lg:inline text-xs text-gray-500 ml-2">⌘K</span>
+              </button>
 
               <button
                 onClick={() => navigateTo({ name: 'messaging', projectId: null })}
@@ -265,6 +302,14 @@ function App() {
           />
         )}
       </main>
+
+      {/* Global Search Modal */}
+      {showGlobalSearchModal && (
+        <GlobalSearch
+          accessToken={accessToken}
+          onClose={() => setShowGlobalSearchModal(false)}
+        />
+      )}
     </div>
   );
 }
