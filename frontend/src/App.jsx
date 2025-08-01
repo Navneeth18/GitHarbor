@@ -25,16 +25,50 @@ function App() {
   // Check for existing token on app load
   useEffect(() => {
     const token = localStorage.getItem('access_token');
+    console.log('Checking for stored token:', token ? 'Token found' : 'No token found');
     if (token) {
-      setAccessToken(token);
-      setIsAuthenticated(true);
+      console.log('Restoring authentication with token');
+      // Validate the token first
+      validateToken(token);
     }
   }, []);
+
+  /**
+   * Validate stored token with backend
+   */
+  const validateToken = async (token) => {
+    try {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
+      const response = await fetch(`${backendUrl}/api/v1/auth/validate`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        console.log('Token is valid, restoring authentication');
+        setAccessToken(token);
+        setIsAuthenticated(true);
+      } else {
+        console.log('Token is invalid, clearing storage');
+        localStorage.removeItem('access_token');
+        setAccessToken(null);
+        setIsAuthenticated(false);
+      }
+    } catch (error) {
+      console.error('Token validation failed:', error);
+      localStorage.removeItem('access_token');
+      setAccessToken(null);
+      setIsAuthenticated(false);
+    }
+  };
 
   /**
    * Handle successful login
    */
   const handleLoginSuccess = (token) => {
+    console.log('Login successful, storing token');
     setAccessToken(token);
     setIsAuthenticated(true);
   };

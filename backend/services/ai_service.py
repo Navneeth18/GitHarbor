@@ -77,10 +77,10 @@ def query_project(project_id: str, question: str) -> dict:
         print(f"Error calling Gemini API: {e}")
         return {"answer": "Sorry, there was an error communicating with the AI model.", "sources": []}
 
-def summarize_project(project_id: str) -> str:
+def summarize_project(project_id: str, user=None) -> str:
     """ Generates a high-level summary of a project using its README. """
     print(f"Generating AI summary for {project_id}...")
-    details = github_service.get_live_project_details(project_id)
+    details = github_service.get_live_project_details(project_id, user)
     readme = details.get("documentation")
     if not readme:
         return "No README file found to generate a summary."

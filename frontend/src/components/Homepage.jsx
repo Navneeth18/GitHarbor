@@ -28,12 +28,18 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
       setLoading(true);
       setError(null);
       
+      console.log('Fetching projects with token:', accessToken ? 'Token exists' : 'No token');
+      console.log('Backend URL:', backendUrl);
+      
       const response = await fetch(`${backendUrl}/api/v1/projects/`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
       });
+      
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
       
       if (!response.ok) {
         if (response.status === 401) {
@@ -43,6 +49,7 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
       }
       
       const data = await response.json();
+      console.log('Projects data:', data);
       setProjects(data);
       setFilteredProjects(data);
     } catch (err) {
