@@ -7,6 +7,7 @@ from models.user import UserInDB
 from models.project import Project
 from services import github_service
 from api.v1.dependencies import get_current_user
+import urllib.parse
 
 router = APIRouter()
 
@@ -29,21 +30,31 @@ def get_project_details(project_id: str, current_user: UserInDB = Depends(get_cu
     - Documentation
     - AI summary
     """
+    # Decode URL-encoded project_id
+    decoded_project_id = urllib.parse.unquote(project_id)
+    print(f"DEBUG: Original project_id: {project_id}")
+    print(f"DEBUG: Decoded project_id: {decoded_project_id}")
+    print(f"DEBUG: Current user: {current_user.username}")
+    
     try:
         # Get project details using the user's GitHub token
-        project_details = github_service.get_live_project_details(project_id, current_user)
+        print(f"DEBUG: Calling github_service.get_live_project_details")
+        project_details = github_service.get_live_project_details(decoded_project_id, current_user)
+        print(f"DEBUG: Project details received: {len(project_details) if project_details else 0} items")
         
         # Get AI summary
         try:
             from services import ai_service
-            summary = ai_service.summarize_project(project_id, current_user)
+            print(f"DEBUG: Calling ai_service.summarize_project")
+            summary = ai_service.summarize_project(decoded_project_id, current_user)
+            print(f"DEBUG: AI summary received: {len(summary) if summary else 0} characters")
         except Exception as ai_error:
             print(f"AI summary failed: {ai_error}")
             summary = "AI summary not available at the moment."
         
         # Combine all data
-        return {
-            "project_id": project_id,
+        result = {
+            "project_id": decoded_project_id,
             "summary": summary,
             "repository_stats": project_details.get("repository_stats", {}),
             "contributors": project_details.get("contributors", []),
@@ -52,10 +63,31 @@ def get_project_details(project_id: str, current_user: UserInDB = Depends(get_cu
             "pushes": project_details.get("pushes", []),
             "merges": project_details.get("merges", [])
         }
+        print(f"DEBUG: Returning result with {len(result)} fields")
+        return result
         
     except Exception as e:
-        print(f"Error getting project details for {project_id}: {e}")
-        raise HTTPException(status_code=404, detail=f"Project {project_id} not found or access denied")
+        print(f"ERROR: Error getting project details for {decoded_project_id}: {e}")
+        print(f"ERROR: Exception type: {type(e)}")
+        import traceback
+        print(f"ERROR: Traceback: {traceback.format_exc()}")
+        
+        # Return fallback data instead of throwing 404
+        print(f"DEBUG: Returning fallback data for {decoded_project_id}")
+        return {
+            "project_id": decoded_project_id,
+            "summary": f"Project {decoded_project_id} - Basic information available. Some details may be limited due to access restrictions.",
+            "repository_stats": {
+                "name": decoded_project_id,
+                "description": "Repository information not available",
+                "visibility": "unknown"
+            },
+            "contributors": [],
+            "commits": [],
+            "documentation": f"# {decoded_project_id}\n\nThis repository's documentation is not currently accessible. This could be due to:\n- Private repository access restrictions\n- Repository not found\n- GitHub API rate limiting\n\nPlease ensure you have the necessary permissions to access this repository.",
+            "pushes": [],
+            "merges": []
+        }
 
 # The rest of the project and chat endpoints can remain largely the same,
 # but their internal logic will now rely on the user's token for any
