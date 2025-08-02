@@ -640,7 +640,6 @@ def get_external_repository_details(owner: str, repo: str, user: Optional[UserIn
         print(f"Error fetching external repository details: {e}")
         return {"success": False, "error": str(e)}
 
-@lru_cache(maxsize=32)
 def get_live_project_details(project_id: str, user: UserInDB = None) -> Dict[str, Any]:
     """ Fetches high-level project details for the dashboard including pushes and merges. """
     print(f"Fetching LIVE data for {project_id} dashboard...")

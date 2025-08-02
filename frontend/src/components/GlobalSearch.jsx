@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, ChevronDown, ChevronUp, Star, GitFork, Eye, Calendar, User, Code, FileText, MessageSquare, GitCommit, ExternalLink } from 'lucide-react';
 import RepositorySummaryModal from './RepositorySummaryModal';
+import { useAuth } from '../contexts/AuthContext';
 
-const GlobalSearch = ({ accessToken, onClose }) => {
+const GlobalSearch = ({ onClose }) => {
+  const { makeAuthenticatedRequest } = useAuth();
+  
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState('all');
   const [results, setResults] = useState(null);
@@ -99,33 +102,26 @@ const GlobalSearch = ({ accessToken, onClose }) => {
     try {
       const endpoint = searchType === 'all' ? 'all' : searchType;
       const searchQuery = buildSearchQuery(query);
+      
       const params = new URLSearchParams({
         q: searchQuery,
-        page: currentPage,
-        per_page: searchType === 'all' ? Math.min(perPage, 10) : perPage
+        sort: sortBy,
+        order: sortOrder,
+        per_page: perPage,
+        page: currentPage
       });
 
-      if (searchType !== 'all') {
-        params.append('sort', sortBy);
-        params.append('order', sortOrder);
+      const response = await makeAuthenticatedRequest(`${backendUrl}/api/v1/search/${endpoint}?${params}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setResults(data);
+      } else {
+        setError(`Search failed: ${response.status}`);
       }
-
-      const response = await fetch(`${backendUrl}/api/v1/search/${endpoint}?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Search failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setResults(data);
     } catch (err) {
       console.error('Search error:', err);
-      setError(err.message || 'Search failed. Please try again.');
+      setError('Search failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -784,7 +780,6 @@ const GlobalSearch = ({ accessToken, onClose }) => {
       {showRepositorySummary && selectedRepository && (
         <RepositorySummaryModal
           repository={selectedRepository}
-          accessToken={accessToken}
           onClose={() => {
             setShowRepositorySummary(false);
             setSelectedRepository(null);

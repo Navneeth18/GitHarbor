@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft,
   BrainCircuit,
@@ -18,12 +18,17 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import ChatPanel from './ChatPanel';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Dashboard component that displays detailed project information
  * Includes AI summary, contributors, commits, documentation, and chat
  */
-function Dashboard({ projectId, onBack, accessToken }) {
+function Dashboard({ projectId, onBack }) {
+  const { makeAuthenticatedRequest, accessToken } = useAuth();
+  
+  console.log('Dashboard rendered with projectId:', projectId);
+  
   // State for project data, loading, and error handling
   const [projectData, setProjectData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,47 +49,53 @@ function Dashboard({ projectId, onBack, accessToken }) {
   /**
    * Fetch project details from the backend API
    */
-  const fetchProjectData = async () => {
+  const fetchProjectData = useCallback(async () => {
+    if (!projectId) return;
+    
+    console.log('Dashboard rendered with projectId:', projectId);
+    console.log('fetchProjectData called for projectId:', projectId);
+    console.log('Current accessToken:', accessToken);
+    console.log('Backend URL:', backendUrl);
+    
     try {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const url = `${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}`;
+      console.log('Making request to:', url);
+      
+      const response = await makeAuthenticatedRequest(url);
+      console.log('fetchProjectData response:', response.status, response.statusText);
       
       if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication expired. Please login again.');
-        }
+        console.error('Response not ok:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('Error response body:', errorText);
         throw new Error(`Failed to fetch project data: ${response.status}`);
       }
       
       const data = await response.json();
+      console.log('fetchProjectData data received:', data);
+      console.log('Repository stats:', data.repository_stats);
+      console.log('Commits count:', data.commits ? data.commits.length : 0);
+      console.log('Contributors count:', data.contributors ? data.contributors.length : 0);
+      
       setProjectData(data);
     } catch (err) {
       console.error('Error fetching project data:', err);
-      setError(err.message || 'Failed to load project data. Please try again.');
+      setError(err.message || 'Failed to load project data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, makeAuthenticatedRequest, backendUrl, accessToken]);
 
   /**
    * Fetch issues for the project
    */
-  const fetchIssues = async () => {
+  const fetchIssues = useCallback(async () => {
     try {
       setLoadingIssues(true);
-      const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}/issues`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await makeAuthenticatedRequest(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}/issues`);
       
       if (response.ok) {
         const data = await response.json();
@@ -97,20 +108,15 @@ function Dashboard({ projectId, onBack, accessToken }) {
     } finally {
       setLoadingIssues(false);
     }
-  };
+  }, [projectId, makeAuthenticatedRequest, backendUrl]);
 
   /**
    * Fetch pull requests for the project
    */
-  const fetchPullRequests = async () => {
+  const fetchPullRequests = useCallback(async () => {
     try {
       setLoadingPRs(true);
-      const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}/pull-requests`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await makeAuthenticatedRequest(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}/pull-requests`);
       
       if (response.ok) {
         const data = await response.json();
@@ -123,20 +129,15 @@ function Dashboard({ projectId, onBack, accessToken }) {
     } finally {
       setLoadingPRs(false);
     }
-  };
+  }, [projectId, makeAuthenticatedRequest, backendUrl]);
 
   /**
    * Fetch commits for the project
    */
-  const fetchCommits = async () => {
+  const fetchCommits = useCallback(async () => {
     try {
       setLoadingCommits(true);
-      const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}/commits`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await makeAuthenticatedRequest(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}/commits`);
       
       if (response.ok) {
         const data = await response.json();
@@ -149,17 +150,17 @@ function Dashboard({ projectId, onBack, accessToken }) {
     } finally {
       setLoadingCommits(false);
     }
-  };
+  }, [projectId, makeAuthenticatedRequest, backendUrl]);
 
   // Fetch project data on component mount or projectId change
   useEffect(() => {
-    if (projectId && accessToken) {
+    if (projectId) {
       fetchProjectData();
       fetchIssues();
       fetchPullRequests();
       fetchCommits();
     }
-  }, [projectId, accessToken]);
+  }, [projectId, fetchProjectData, fetchIssues, fetchPullRequests, fetchCommits]);
 
   /**
    * Format date to readable string
@@ -284,34 +285,7 @@ function Dashboard({ projectId, onBack, accessToken }) {
 
         <div className="flex items-center space-x-4">
           {/* Token Refresh Button */}
-          <button
-            onClick={async () => {
-              try {
-                const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
-                const response = await fetch(`${backendUrl}/api/v1/auth/refresh-token`, {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json',
-                  },
-                });
-                
-                if (response.ok) {
-                  const data = await response.json();
-                  window.location.href = data.auth_url;
-                } else {
-                  alert('Failed to refresh token. Please try logging in again.');
-                }
-              } catch (error) {
-                console.error('Token refresh failed:', error);
-                alert('Failed to refresh token. Please try logging in again.');
-              }
-            }}
-            className="px-3 py-1 text-sm bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors"
-            title="Refresh GitHub Token"
-          >
-            🔄 Refresh Token
-          </button>
+
 
           {/* Chat Toggle Button */}
           <button
@@ -967,7 +941,7 @@ function Dashboard({ projectId, onBack, accessToken }) {
         {/* Right Column - AI Chat Panel */}
         {isChatVisible && (
           <div className="lg:col-span-4 transition-all duration-300">
-            <ChatPanel projectId={projectId} accessToken={accessToken} />
+            <ChatPanel projectId={projectId} />
           </div>
         )}
       </div>

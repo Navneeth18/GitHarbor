@@ -6,15 +6,14 @@ import LoginPage from './components/LoginPage';
 import MessagingPage from './components/MessagingPage';
 import FullDocumentation from './components/FullDocumentation';
 import GlobalSearch from './components/GlobalSearch';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 /**
  * Main App component that handles routing between Login, Homepage and Dashboard
  * Uses simple state-based routing instead of react-router-dom
  */
-function App() {
-  // Authentication state
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [accessToken, setAccessToken] = useState(null);
+function AppContent() {
+  const { isAuthenticated, isLoading, handleLoginSuccess, logout } = useAuth();
 
   // Page state to handle navigation - 'home', 'dashboard', 'messaging', or 'docs'
   const [page, setPage] = useState({ name: 'home', projectId: null });
@@ -23,17 +22,6 @@ function App() {
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [showGlobalSearchModal, setShowGlobalSearchModal] = useState(false);
-
-  // Check for existing token on app load
-  useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    console.log('Checking for stored token:', token ? 'Token found' : 'No token found');
-    if (token) {
-      console.log('Restoring authentication with token');
-      // Validate the token first
-      validateToken(token);
-    }
-  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -57,89 +45,11 @@ function App() {
   }, [isAuthenticated]);
 
   /**
-   * Validate stored token with backend
-   */
-  const validateToken = async (token) => {
-    try {
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
-      const response = await fetch(`${backendUrl}/api/v1/auth/validate`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (response.ok) {
-        console.log('Token is valid, restoring authentication');
-        setAccessToken(token);
-        setIsAuthenticated(true);
-      } else {
-        console.log('Token is invalid, attempting refresh');
-        await refreshToken();
-      }
-    } catch (error) {
-      console.error('Token validation failed:', error);
-      await refreshToken();
-    }
-  };
-
-  /**
-   * Refresh GitHub token
-   */
-  const refreshToken = async () => {
-    try {
-      console.log('Attempting to refresh GitHub token...');
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
-      const response = await fetch(`${backendUrl}/api/v1/auth/refresh-token`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Redirecting to GitHub for re-authentication');
-        window.location.href = data.auth_url;
-      } else {
-        console.log('Token refresh failed, clearing storage');
-        localStorage.removeItem('access_token');
-        setAccessToken(null);
-        setIsAuthenticated(false);
-      }
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-      localStorage.removeItem('access_token');
-      setAccessToken(null);
-      setIsAuthenticated(false);
-    }
-  };
-
-  /**
-   * Handle successful login
-   */
-  const handleLoginSuccess = (token) => {
-    console.log('Login successful, storing token');
-    setAccessToken(token);
-    setIsAuthenticated(true);
-  };
-
-  /**
-   * Handle logout
-   */
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    setAccessToken(null);
-    setIsAuthenticated(false);
-    setPage({ name: 'home', projectId: null });
-  };
-
-  /**
    * Navigation function to switch between pages
    * @param {Object} newPage - Page object with name and optional projectId
    */
   const navigateTo = (newPage) => {
+    console.log('navigateTo called with:', newPage);
     setPage(newPage);
     setShowGlobalSearch(false); // Close search when navigating
   };
@@ -211,6 +121,21 @@ function App() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [showGlobalSearch, showGlobalSearchModal]);
+
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <span className="text-white font-bold text-2xl">K</span>
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-2">Kortex</h1>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Show login page if not authenticated
   if (!isAuthenticated) {
@@ -288,7 +213,7 @@ function App() {
               </button>
               <p className="text-gray-400 text-sm hidden md:block">GitHub Knowledge Transfer Platform</p>
               <button
-                onClick={handleLogout}
+                onClick={logout}
                 className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
               >
                 Logout
@@ -306,14 +231,12 @@ function App() {
               navigateTo({ name: 'dashboard', projectId })
             }
             initialSearchQuery={page.searchQuery}
-            accessToken={accessToken}
           />
         )}
         {page.name === 'dashboard' && (
           <Dashboard
             projectId={page.projectId}
             onBack={() => navigateTo({ name: 'home', projectId: null })}
-            accessToken={accessToken}
           />
         )}
         {page.name === 'messaging' && (
@@ -335,11 +258,21 @@ function App() {
       {/* Global Search Modal */}
       {showGlobalSearchModal && (
         <GlobalSearch
-          accessToken={accessToken}
           onClose={() => setShowGlobalSearchModal(false)}
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Main App component wrapped with AuthProvider
+ */
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
