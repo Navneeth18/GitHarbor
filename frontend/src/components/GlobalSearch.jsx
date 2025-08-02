@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, ChevronDown, ChevronUp, Star, GitFork, Eye, Calendar, User, Code, FileText, MessageSquare, GitCommit, ExternalLink } from 'lucide-react';
+import RepositorySummaryModal from './RepositorySummaryModal';
 
 const GlobalSearch = ({ accessToken, onClose }) => {
   const [query, setQuery] = useState('');
@@ -15,6 +16,8 @@ const GlobalSearch = ({ accessToken, onClose }) => {
   const [languageFilter, setLanguageFilter] = useState('');
   const [starsFilter, setStarsFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [selectedRepository, setSelectedRepository] = useState(null);
+  const [showRepositorySummary, setShowRepositorySummary] = useState(false);
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
@@ -206,13 +209,24 @@ const GlobalSearch = ({ accessToken, onClose }) => {
           )}
         </div>
         
-        <div className="flex items-center space-x-2 ml-4">
-          <img
-            src={repo.owner.avatar_url}
-            alt={repo.owner.login}
-            className="w-8 h-8 rounded-full"
-          />
-          <span className="text-sm text-gray-400">{repo.owner.login}</span>
+        <div className="flex flex-col items-end space-y-2 ml-4">
+          <div className="flex items-center space-x-2">
+            <img
+              src={repo.owner.avatar_url}
+              alt={repo.owner.login}
+              className="w-8 h-8 rounded-full"
+            />
+            <span className="text-sm text-gray-400">{repo.owner.login}</span>
+          </div>
+          <button
+            onClick={() => {
+              setSelectedRepository(repo);
+              setShowRepositorySummary(true);
+            }}
+            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+          >
+            View Summary
+          </button>
         </div>
       </div>
     </div>
@@ -765,6 +779,18 @@ const GlobalSearch = ({ accessToken, onClose }) => {
           )}
         </div>
       </div>
+
+      {/* Repository Summary Modal */}
+      {showRepositorySummary && selectedRepository && (
+        <RepositorySummaryModal
+          repository={selectedRepository}
+          accessToken={accessToken}
+          onClose={() => {
+            setShowRepositorySummary(false);
+            setSelectedRepository(null);
+          }}
+        />
+      )}
     </div>
   );
 };

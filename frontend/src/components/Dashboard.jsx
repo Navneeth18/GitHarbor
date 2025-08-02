@@ -30,6 +30,14 @@ function Dashboard({ projectId, onBack, accessToken }) {
   const [error, setError] = useState(null);
   const [isChatVisible, setIsChatVisible] = useState(false);
 
+  // State for separate data sections
+  const [issues, setIssues] = useState([]);
+  const [pullRequests, setPullRequests] = useState([]);
+  const [commits, setCommits] = useState([]);
+  const [loadingIssues, setLoadingIssues] = useState(false);
+  const [loadingPRs, setLoadingPRs] = useState(false);
+  const [loadingCommits, setLoadingCommits] = useState(false);
+
   // Backend URL from environment variables
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
 
@@ -65,10 +73,91 @@ function Dashboard({ projectId, onBack, accessToken }) {
     }
   };
 
+  /**
+   * Fetch issues for the project
+   */
+  const fetchIssues = async () => {
+    try {
+      setLoadingIssues(true);
+      const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}/issues`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setIssues(data.issues || []);
+      } else {
+        console.error('Failed to fetch issues:', response.status);
+      }
+    } catch (err) {
+      console.error('Error fetching issues:', err);
+    } finally {
+      setLoadingIssues(false);
+    }
+  };
+
+  /**
+   * Fetch pull requests for the project
+   */
+  const fetchPullRequests = async () => {
+    try {
+      setLoadingPRs(true);
+      const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}/pull-requests`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPullRequests(data.pull_requests || []);
+      } else {
+        console.error('Failed to fetch pull requests:', response.status);
+      }
+    } catch (err) {
+      console.error('Error fetching pull requests:', err);
+    } finally {
+      setLoadingPRs(false);
+    }
+  };
+
+  /**
+   * Fetch commits for the project
+   */
+  const fetchCommits = async () => {
+    try {
+      setLoadingCommits(true);
+      const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}/commits`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCommits(data.commits || []);
+      } else {
+        console.error('Failed to fetch commits:', response.status);
+      }
+    } catch (err) {
+      console.error('Error fetching commits:', err);
+    } finally {
+      setLoadingCommits(false);
+    }
+  };
+
   // Fetch project data on component mount or projectId change
   useEffect(() => {
     if (projectId && accessToken) {
       fetchProjectData();
+      fetchIssues();
+      fetchPullRequests();
+      fetchCommits();
     }
   }, [projectId, accessToken]);
 
@@ -193,28 +282,60 @@ function Dashboard({ projectId, onBack, accessToken }) {
           <h1 className="text-2xl font-bold text-white">{projectId}</h1>
         </div>
 
-        {/* Chat Toggle Button */}
-        <button
-          onClick={() => setIsChatVisible(!isChatVisible)}
-          className={`fixed top-20 right-6 z-50 flex items-center space-x-2 px-4 py-2 rounded-lg shadow-lg transition-all duration-200 ${
-            isChatVisible
-              ? 'bg-red-600 hover:bg-red-700 text-white'
-              : 'bg-blue-600 hover:bg-blue-700 text-white'
-          }`}
-          style={{ position: 'fixed', top: '80px', right: '24px' }}
-        >
-          {isChatVisible ? (
-            <>
-              <X className="w-5 h-5" />
-              <span>Close</span>
-            </>
-          ) : (
-            <>
-              <MessageCircle className="w-5 h-5" />
-              <span>CB</span>
-            </>
-          )}
-        </button>
+        <div className="flex items-center space-x-4">
+          {/* Token Refresh Button */}
+          <button
+            onClick={async () => {
+              try {
+                const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
+                const response = await fetch(`${backendUrl}/api/v1/auth/refresh-token`, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                  },
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  window.location.href = data.auth_url;
+                } else {
+                  alert('Failed to refresh token. Please try logging in again.');
+                }
+              } catch (error) {
+                console.error('Token refresh failed:', error);
+                alert('Failed to refresh token. Please try logging in again.');
+              }
+            }}
+            className="px-3 py-1 text-sm bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors"
+            title="Refresh GitHub Token"
+          >
+            🔄 Refresh Token
+          </button>
+
+          {/* Chat Toggle Button */}
+          <button
+            onClick={() => setIsChatVisible(!isChatVisible)}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg shadow-lg transition-all duration-200 ${
+              isChatVisible
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+            style={{ position: 'relative' }}
+          >
+            {isChatVisible ? (
+              <>
+                <X className="w-5 h-5" />
+                <span>Close</span>
+              </>
+            ) : (
+              <>
+                <MessageCircle className="w-5 h-5" />
+                <span>CB</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Three-column layout */}
@@ -360,7 +481,7 @@ function Dashboard({ projectId, onBack, accessToken }) {
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 h-[calc(100vh-8rem)] min-h-[800px] max-h-[1200px] flex flex-col">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-2">
-                <BookOpen className="w-5 h-5 text-purple-400" />
+              <BookOpen className="w-5 h-5 text-purple-400" />
                 <h3 className="text-lg font-semibold text-white">Documentation & Repository Info</h3>
               </div>
               <button
@@ -692,27 +813,150 @@ function Dashboard({ projectId, onBack, accessToken }) {
                 </h2>
 
                 <div className="bg-gray-900 border border-gray-600 rounded-lg p-6">
-                  {projectData?.documentation ? (
-                    <ReactMarkdown
-                      components={{
-                        // Custom styling for markdown elements
+              {projectData?.documentation ? (
+                <ReactMarkdown
+                  components={{
+                    // Custom styling for markdown elements
                         h1: ({children}) => <h1 className="text-2xl font-bold text-white mb-6">{children}</h1>,
                         h2: ({children}) => <h2 className="text-xl font-semibold text-white mb-4 mt-8">{children}</h2>,
                         h3: ({children}) => <h3 className="text-lg font-medium text-white mb-3 mt-6">{children}</h3>,
                         p: ({children}) => <p className="text-gray-300 mb-4 leading-relaxed">{children}</p>,
                         code: ({children}) => <code className="bg-gray-700 text-gray-200 px-2 py-1 rounded text-sm">{children}</code>,
                         pre: ({children}) => <pre className="bg-gray-800 border border-gray-600 rounded-lg p-4 overflow-x-auto mb-6">{children}</pre>,
-                        a: ({href, children}) => <a href={href} className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+                    a: ({href, children}) => <a href={href} className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">{children}</a>,
                         ul: ({children}) => <ul className="text-gray-300 mb-4 ml-6 list-disc">{children}</ul>,
                         ol: ({children}) => <ol className="text-gray-300 mb-4 ml-6 list-decimal">{children}</ol>,
                         li: ({children}) => <li className="mb-2">{children}</li>,
                         blockquote: ({children}) => <blockquote className="border-l-4 border-purple-500 pl-6 italic text-gray-400 mb-6 bg-gray-800 py-4 rounded-r">{children}</blockquote>
-                      }}
-                    >
-                      {projectData.documentation}
-                    </ReactMarkdown>
-                  ) : (
+                  }}
+                >
+                  {projectData.documentation}
+                </ReactMarkdown>
+              ) : (
                     <p className="text-gray-500 text-center py-8">No README documentation available</p>
+              )}
+                </div>
+              </div>
+
+              {/* Separator */}
+              <div className="mt-10 mb-10">
+                <div className="border-t border-gray-600"></div>
+              </div>
+
+              {/* Issues Section */}
+              <div className="mb-10">
+                <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
+                  <AlertCircle className="w-5 h-5 text-red-400 mr-2" />
+                  Issues ({issues.length})
+                </h2>
+                <div className="bg-gray-900 border border-gray-600 rounded-lg p-6">
+                  {loadingIssues ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 text-blue-500 animate-spin mr-2" />
+                      <span className="text-gray-400">Loading issues...</span>
+                    </div>
+                  ) : issues.length > 0 ? (
+                    <div className="space-y-4">
+                      {issues.slice(0, 10).map((issue, index) => (
+                        <div key={index} className="border border-gray-700 rounded-lg p-4 hover:bg-gray-800 transition-colors">
+                          <div className="flex items-start justify-between mb-2">
+                            <h3 className="text-white font-medium">{issue.title}</h3>
+                            <span className={`px-2 py-1 rounded-full text-xs ${
+                              issue.state === 'open' ? 'bg-green-600 text-green-100' : 'bg-gray-600 text-gray-300'
+                            }`}>
+                              {issue.state}
+                            </span>
+                          </div>
+                          <p className="text-gray-400 text-sm mb-3 line-clamp-2">
+                            {issue.body ? issue.body.substring(0, 150) + '...' : 'No description'}
+                          </p>
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>#{issue.number} by {issue.user?.login}</span>
+                            <span>{formatDate(issue.created_at)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-center py-8">No issues found</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Pull Requests Section */}
+              <div className="mb-10">
+                <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
+                  <GitMerge className="w-5 h-5 text-blue-400 mr-2" />
+                  Pull Requests ({pullRequests.length})
+                </h2>
+                <div className="bg-gray-900 border border-gray-600 rounded-lg p-6">
+                  {loadingPRs ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 text-blue-500 animate-spin mr-2" />
+                      <span className="text-gray-400">Loading pull requests...</span>
+                    </div>
+                  ) : pullRequests.length > 0 ? (
+                    <div className="space-y-4">
+                      {pullRequests.slice(0, 10).map((pr, index) => (
+                        <div key={index} className="border border-gray-700 rounded-lg p-4 hover:bg-gray-800 transition-colors">
+                          <div className="flex items-start justify-between mb-2">
+                            <h3 className="text-white font-medium">{pr.title}</h3>
+                            <span className={`px-2 py-1 rounded-full text-xs ${
+                              pr.state === 'open' ? 'bg-green-600 text-green-100' : 
+                              pr.merged_at ? 'bg-purple-600 text-purple-100' : 'bg-gray-600 text-gray-300'
+                            }`}>
+                              {pr.merged_at ? 'merged' : pr.state}
+                            </span>
+                          </div>
+                          <p className="text-gray-400 text-sm mb-3 line-clamp-2">
+                            {pr.body ? pr.body.substring(0, 150) + '...' : 'No description'}
+                          </p>
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>#{pr.number} by {pr.user?.login}</span>
+                            <span>{formatDate(pr.created_at)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-center py-8">No pull requests found</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Commit History Section */}
+              <div className="mb-10">
+                <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
+                  <GitCommit className="w-5 h-5 text-yellow-400 mr-2" />
+                  Commit History ({commits.length})
+                </h2>
+                <div className="bg-gray-900 border border-gray-600 rounded-lg p-6">
+                  {loadingCommits ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 text-blue-500 animate-spin mr-2" />
+                      <span className="text-gray-400">Loading commits...</span>
+                    </div>
+                  ) : commits.length > 0 ? (
+                    <div className="space-y-4">
+                      {commits.slice(0, 15).map((commit, index) => (
+                        <div key={index} className="border-l-2 border-gray-600 pl-4 py-2 hover:bg-gray-800 rounded-r transition-colors">
+                          <div className="flex items-start justify-between mb-1">
+                            <p className="text-white text-sm font-medium">
+                              {getCommitSummary(commit.commit?.message)}
+                            </p>
+                            <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">
+                              {commit.sha?.substring(0, 7)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>{commit.commit?.author?.name}</span>
+                            <span>{formatDate(commit.commit?.author?.date)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-center py-8">No commits found</p>
                   )}
                 </div>
               </div>

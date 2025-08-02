@@ -8,6 +8,7 @@ from functools import lru_cache
 from typing import List, Dict, Any, Optional
 from models.user import UserInDB
 from . import encryption_service
+import time
 
 BASE_URL = "https://api.github.com"
 REPOS_BASE_URL = "https://api.github.com/repos/"
@@ -26,20 +27,74 @@ def get_user_repos_for_user(user: UserInDB) -> List[Dict[str, Any]]:
     Fetches a user's own public repos and repos they've contributed to.
     """
     if not user.encrypted_github_token:
+        print("No encrypted token available")
         return []
 
-    decrypted_token = encryption_service.decrypt_token(user.encrypted_github_token)
-    headers = {"Authorization": f"token {decrypted_token}"}
+    try:
+        decrypted_token = encryption_service.decrypt_token(user.encrypted_github_token)
+        headers = {
+            "Authorization": f"token {decrypted_token}",
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "Kortex-App"
+        }
 
-    # Fetch user's own repos
-    repos_url = f"{BASE_URL}/user/repos?type=owner&sort=updated"
-    repos_response = requests.get(repos_url, headers=headers)
-    user_repos = repos_response.json() if repos_response.ok else []
+        # Fetch user's own repos
+        repos_url = f"{BASE_URL}/user/repos?type=owner&sort=updated&per_page=100"
+        print(f"Fetching repos from: {repos_url}")
+        
+        repos_response = requests.get(repos_url, headers=headers, timeout=10)
+        print(f"Repos response status: {repos_response.status_code}")
+        
+        if repos_response.ok:
+            user_repos = repos_response.json()
+            print(f"Successfully fetched {len(user_repos)} repositories")
+            return user_repos
+        else:
+            print(f"Failed to fetch repos: {repos_response.status_code} - {repos_response.text}")
+            return []
+            
+    except Exception as e:
+        print(f"Error fetching user repos: {e}")
+        return []
 
-    # A more complex implementation could also fetch contributed repos,
-    # but for a hackathon, fetching the user's own repos is a great start.
-
-    return user_repos
+def make_github_request(url: str, user: UserInDB = None, timeout: int = 10) -> Dict[str, Any]:
+    """
+    Helper function to make GitHub API requests with proper error handling
+    """
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Kortex-App"
+    }
+    
+    if user and user.encrypted_github_token:
+        try:
+            decrypted_token = encryption_service.decrypt_token(user.encrypted_github_token)
+            headers["Authorization"] = f"token {decrypted_token}"
+            print(f"Using authenticated request for {url}")
+        except Exception as e:
+            print(f"Failed to decrypt token: {e}")
+    else:
+        print(f"Using public request for {url}")
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=timeout)
+        print(f"Request to {url} returned status: {response.status_code}")
+        
+        if response.status_code == 200:
+            return {"success": True, "data": response.json()}
+        elif response.status_code == 404:
+            return {"success": False, "error": "Repository not found"}
+        elif response.status_code == 401:
+            return {"success": False, "error": "Unauthorized - token may be invalid"}
+        elif response.status_code == 403:
+            return {"success": False, "error": "Rate limited or access forbidden"}
+        else:
+            return {"success": False, "error": f"HTTP {response.status_code}: {response.text}"}
+            
+    except requests.exceptions.Timeout:
+        return {"success": False, "error": "Request timeout"}
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": f"Request failed: {str(e)}"}
 
 def _check_rate_limit():
     """Check and enforce GitHub Search API rate limits"""
@@ -491,6 +546,100 @@ def search_commits_global(
 
     return result
 
+def get_external_repository_details(owner: str, repo: str, user: Optional[UserInDB] = None) -> Dict[str, Any]:
+    """
+    Fetch detailed information about an external repository for summary generation
+    """
+    try:
+        repo_name = f"{owner}/{repo}"
+        print(f"Fetching external repository details for {repo_name}")
+
+        # API endpoints
+        repo_url = f"{REPOS_BASE_URL}{repo_name}"
+        commits_url = f"{REPOS_BASE_URL}{repo_name}/commits?per_page=10"
+        readme_url = f"{REPOS_BASE_URL}{repo_name}/readme"
+        languages_url = f"{REPOS_BASE_URL}{repo_name}/languages"
+
+        # Make requests
+        repo_result = make_github_request(repo_url, user)
+        commits_result = make_github_request(commits_url, user)
+        readme_result = make_github_request(readme_url, user)
+        languages_result = make_github_request(languages_url, user)
+
+        if not repo_result["success"]:
+            return {"success": False, "error": repo_result["error"]}
+
+        # Process repository data
+        repo_data = repo_result["data"]
+
+        # Process commits
+        recent_commits = []
+        if commits_result["success"]:
+            for commit in commits_result["data"][:5]:  # Get last 5 commits
+                recent_commits.append({
+                    "sha": commit.get("sha"),
+                    "message": commit.get("commit", {}).get("message", ""),
+                    "author": commit.get("commit", {}).get("author", {}).get("name", "Unknown"),
+                    "date": commit.get("commit", {}).get("author", {}).get("date", ""),
+                    "url": commit.get("html_url")
+                })
+
+        # Process README
+        readme_content = ""
+        if readme_result["success"]:
+            try:
+                import base64
+                content = readme_result["data"].get("content", "")
+                if content:
+                    readme_content = base64.b64decode(content).decode('utf-8')
+            except Exception as e:
+                print(f"Error decoding README: {e}")
+                readme_content = "README content could not be decoded"
+
+        # Process languages
+        languages = {}
+        if languages_result["success"]:
+            lang_data = languages_result["data"]
+            total_bytes = sum(lang_data.values())
+            if total_bytes > 0:
+                languages = {
+                    lang: (bytes_count / total_bytes) * 100
+                    for lang, bytes_count in lang_data.items()
+                }
+
+        return {
+            "success": True,
+            "data": {
+                "repository_info": {
+                    "name": repo_data.get("name"),
+                    "full_name": repo_data.get("full_name"),
+                    "description": repo_data.get("description"),
+                    "stars": repo_data.get("stargazers_count", 0),
+                    "forks": repo_data.get("forks_count", 0),
+                    "watchers": repo_data.get("watchers_count", 0),
+                    "language": repo_data.get("language"),
+                    "created_at": repo_data.get("created_at"),
+                    "updated_at": repo_data.get("updated_at"),
+                    "pushed_at": repo_data.get("pushed_at"),
+                    "size": repo_data.get("size", 0),
+                    "default_branch": repo_data.get("default_branch"),
+                    "topics": repo_data.get("topics", []),
+                    "license": repo_data.get("license", {}).get("name") if repo_data.get("license") else None,
+                    "open_issues": repo_data.get("open_issues_count", 0),
+                    "homepage": repo_data.get("homepage"),
+                    "archived": repo_data.get("archived", False),
+                    "disabled": repo_data.get("disabled", False)
+                },
+                "recent_commits": recent_commits,
+                "readme": readme_content[:2000],  # Limit README to 2000 chars for AI processing
+                "languages": languages
+            }
+        }
+
+    except Exception as e:
+        print(f"Error fetching external repository details: {e}")
+        return {"success": False, "error": str(e)}
+
 @lru_cache(maxsize=32)
 def get_live_project_details(project_id: str, user: UserInDB = None) -> Dict[str, Any]:
     """ Fetches high-level project details for the dashboard including pushes and merges. """
@@ -498,101 +647,25 @@ def get_live_project_details(project_id: str, user: UserInDB = None) -> Dict[str
     print(f"User: {user.username if user else 'None'}")
 
     # API endpoints
+    repo_url = f"{REPOS_BASE_URL}{project_id}"
     commits_url = f"{REPOS_BASE_URL}{project_id}/commits?per_page=15"
     prs_url = f"{REPOS_BASE_URL}{project_id}/pulls?state=all&per_page=15&sort=updated&direction=desc"
     contributors_url = f"{REPOS_BASE_URL}{project_id}/contributors?per_page=10"
     readme_url = f"{REPOS_BASE_URL}{project_id}/readme"
-    events_url = f"{REPOS_BASE_URL}{project_id}/events?per_page=30"  # For push events
-    repo_url = f"{REPOS_BASE_URL}{project_id}"  # For repository stats
+    events_url = f"{REPOS_BASE_URL}{project_id}/events?per_page=30"
 
-    # Use user's token if available, otherwise use basic headers
-    headers = {"Accept": "application/vnd.github.v3+json"}
-    if user and user.encrypted_github_token:
-        try:
-            decrypted_token = encryption_service.decrypt_token(user.encrypted_github_token)
-            headers["Authorization"] = f"token {decrypted_token}"
-            print(f"Using user's GitHub token for API calls")
-        except Exception as e:
-            print(f"Failed to decrypt user token: {e}")
-    else:
-        print(f"No user token available, using public API")
+    # Make all requests
+    repo_result = make_github_request(repo_url, user)
+    commits_result = make_github_request(commits_url, user)
+    prs_result = make_github_request(prs_url, user)
+    contributors_result = make_github_request(contributors_url, user)
+    readme_result = make_github_request(readme_url, user)
+    events_result = make_github_request(events_url, user)
 
-    # Make API requests
-    print(f"Making API requests to GitHub...")
-    commits_response = requests.get(commits_url, headers=headers)
-    prs_response = requests.get(prs_url, headers=headers)
-    contributors_response = requests.get(contributors_url, headers=headers)
-    readme_response = requests.get(readme_url, headers=headers)
-    events_response = requests.get(events_url, headers=headers)
-    repo_response = requests.get(repo_url, headers=headers)
-
-    # Log response statuses
-    print(f"API Response Statuses:")
-    print(f"  Commits: {commits_response.status_code}")
-    print(f"  PRs: {prs_response.status_code}")
-    print(f"  Contributors: {contributors_response.status_code}")
-    print(f"  README: {readme_response.status_code}")
-    print(f"  Events: {events_response.status_code}")
-    print(f"  Repo: {repo_response.status_code}")
-
-    # Check if any critical requests failed
-    if repo_response.status_code == 404:
-        print(f"ERROR: Repository {project_id} not found or access denied")
-        raise Exception(f"Repository {project_id} not found or access denied")
-    
-    if repo_response.status_code != 200:
-        print(f"ERROR: Repository API failed with status {repo_response.status_code}")
-        print(f"Response: {repo_response.text}")
-        raise Exception(f"GitHub API error: {repo_response.status_code}")
-
-    # Process README content
-    readme_content = ""
-    if readme_response.ok:
-        readme_content = base64.b64decode(readme_response.json()['content']).decode('utf-8')
-
-    # Process events to extract push information
-    pushes = []
-    if events_response.ok:
-        events = events_response.json()
-        for event in events:
-            if event.get('type') == 'PushEvent':
-                push_info = {
-                    "id": event.get('id'),
-                    "actor": event.get('actor', {}).get('login'),
-                    "created_at": event.get('created_at'),
-                    "ref": event.get('payload', {}).get('ref'),
-                    "commits_count": len(event.get('payload', {}).get('commits', [])),
-                    "commits": event.get('payload', {}).get('commits', [])[:3],  # First 3 commits
-                    "repository": event.get('repo', {}).get('name')
-                }
-                pushes.append(push_info)
-
-    # Process pull requests to extract merge information
-    merges = []
-    if prs_response.ok:
-        prs = prs_response.json()
-        for pr in prs:
-            if pr.get('merged_at'):  # Only merged PRs
-                merge_info = {
-                    "id": pr.get('id'),
-                    "number": pr.get('number'),
-                    "title": pr.get('title'),
-                    "user": pr.get('user', {}).get('login'),
-                    "merged_at": pr.get('merged_at'),
-                    "merged_by": pr.get('merged_by', {}).get('login') if pr.get('merged_by') else None,
-                    "base_branch": pr.get('base', {}).get('ref'),
-                    "head_branch": pr.get('head', {}).get('ref'),
-                    "commits": pr.get('commits'),
-                    "additions": pr.get('additions'),
-                    "deletions": pr.get('deletions'),
-                    "changed_files": pr.get('changed_files')
-                }
-                merges.append(merge_info)
-
-    # Process repository statistics
+    # Process repository data
     repo_stats = {}
-    if repo_response.ok:
-        repo_data = repo_response.json()
+    if repo_result["success"]:
+        repo_data = repo_result["data"]
         repo_stats = {
             "stars": repo_data.get('stargazers_count', 0),
             "forks": repo_data.get('forks_count', 0),
@@ -619,17 +692,112 @@ def get_live_project_details(project_id: str, user: UserInDB = None) -> Dict[str
             "network_count": repo_data.get('network_count', 0),
             "subscribers_count": repo_data.get('subscribers_count', 0)
         }
+    else:
+        print(f"Failed to get repo data: {repo_result['error']}")
+
+    # Process README content
+    readme_content = ""
+    if readme_result["success"]:
+        try:
+            readme_data = readme_result["data"]
+            readme_content = base64.b64decode(readme_data['content']).decode('utf-8')
+        except Exception as e:
+            print(f"Failed to decode README: {e}")
+
+    # Process events to extract push information
+    pushes = []
+    if events_result["success"]:
+        events = events_result["data"]
+        for event in events:
+            if event.get('type') == 'PushEvent':
+                push_info = {
+                    "id": event.get('id'),
+                    "actor": event.get('actor', {}).get('login'),
+                    "created_at": event.get('created_at'),
+                    "ref": event.get('payload', {}).get('ref'),
+                    "commits_count": len(event.get('payload', {}).get('commits', [])),
+                    "commits": event.get('payload', {}).get('commits', [])[:3],
+                    "repository": event.get('repo', {}).get('name')
+                }
+                pushes.append(push_info)
+
+    # Process pull requests to extract merge information
+    merges = []
+    if prs_result["success"]:
+        prs = prs_result["data"]
+        for pr in prs:
+            if pr.get('merged_at'):
+                merge_info = {
+                    "id": pr.get('id'),
+                    "number": pr.get('number'),
+                    "title": pr.get('title'),
+                    "user": pr.get('user', {}).get('login'),
+                    "merged_at": pr.get('merged_at'),
+                    "merged_by": pr.get('merged_by', {}).get('login') if pr.get('merged_by') else None,
+                    "base_branch": pr.get('base', {}).get('ref'),
+                    "head_branch": pr.get('head', {}).get('ref'),
+                    "commits": pr.get('commits'),
+                    "additions": pr.get('additions'),
+                    "deletions": pr.get('deletions'),
+                    "changed_files": pr.get('changed_files')
+                }
+                merges.append(merge_info)
 
     return {
         "project_id": project_id,
-        "commits": commits_response.json() if commits_response.ok else [],
-        "pull_requests": prs_response.json() if prs_response.ok else [],
-        "contributors": contributors_response.json() if contributors_response.ok else [],
+        "commits": commits_result["data"] if commits_result["success"] else [],
+        "pull_requests": prs_result["data"] if prs_result["success"] else [],
+        "contributors": contributors_result["data"] if contributors_result["success"] else [],
         "documentation": readme_content,
         "pushes": pushes,
         "merges": merges,
         "repository_stats": repo_stats
     }
+
+def get_project_issues(project_id: str, user: UserInDB = None) -> List[Dict[str, Any]]:
+    """ Fetches issues for a specific project """
+    print(f"Fetching issues for {project_id}...")
+    
+    issues_url = f"{REPOS_BASE_URL}{project_id}/issues?state=all&per_page=50&sort=updated&direction=desc"
+    result = make_github_request(issues_url, user)
+    
+    if result["success"]:
+        issues = result["data"]
+        # Filter out pull requests (GitHub API returns both issues and PRs)
+        issues_only = [issue for issue in issues if 'pull_request' not in issue]
+        print(f"Successfully fetched {len(issues_only)} issues")
+        return issues_only
+    else:
+        print(f"Failed to fetch issues: {result['error']}")
+        return []
+
+def get_project_pull_requests(project_id: str, user: UserInDB = None) -> List[Dict[str, Any]]:
+    """ Fetches pull requests for a specific project """
+    print(f"Fetching pull requests for {project_id}...")
+    
+    prs_url = f"{REPOS_BASE_URL}{project_id}/pulls?state=all&per_page=50&sort=updated&direction=desc"
+    result = make_github_request(prs_url, user)
+    
+    if result["success"]:
+        print(f"Successfully fetched {len(result['data'])} pull requests")
+        return result["data"]
+    else:
+        print(f"Failed to fetch pull requests: {result['error']}")
+        return []
+
+def get_project_commits(project_id: str, user: UserInDB = None) -> List[Dict[str, Any]]:
+    """ Fetches commit history for a specific project """
+    print(f"Fetching commits for {project_id}...")
+    
+    commits_url = f"{REPOS_BASE_URL}{project_id}/commits?per_page=50"
+    result = make_github_request(commits_url, user)
+    
+    if result["success"]:
+        print(f"Successfully fetched {len(result['data'])} commits")
+        return result["data"]
+    else:
+        print(f"Failed to fetch commits: {result['error']}")
+        return []
 
 def get_text_content_for_rag(project_id: str) -> List[Dict[str, str]]:
     """ Gathers all relevant text content for the RAG pipeline. """

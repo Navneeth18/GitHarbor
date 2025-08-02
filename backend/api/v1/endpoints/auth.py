@@ -83,6 +83,27 @@ def github_callback(code: str):
         logger.error(f"Error in callback: {str(e)}", exc_info=True)
         return RedirectResponse(url="http://localhost:5173/?error=auth_failed")
 
+@router.post("/refresh-token")
+def refresh_github_token(current_user: UserInDB = Depends(get_current_user)):
+    """
+    Refreshes the GitHub token by re-authenticating with GitHub
+    """
+    try:
+        logger.info(f"Refreshing token for user: {current_user.username}")
+        
+        # Generate a new OAuth URL for re-authentication
+        redirect_uri = "http://127.0.0.1:8000/api/v1/auth/callback"
+        github_auth_url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&redirect_uri={redirect_uri}&scope=repo,user"
+        
+        return {
+            "auth_url": github_auth_url,
+            "message": "Please re-authenticate with GitHub to refresh your token"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error refreshing token: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to refresh token")
+
 @router.get("/validate")
 def validate_token(current_user: UserInDB = Depends(get_current_user)):
     """

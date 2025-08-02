@@ -6,6 +6,8 @@ import google.generativeai as genai
 import chromadb
 from core.config import GOOGLE_API_KEY
 from . import github_service
+from typing import Dict, Any, Optional
+from models.user import UserInDB
 
 # Configure the Gemini API
 genai.configure(api_key=GOOGLE_API_KEY)
@@ -96,3 +98,87 @@ def summarize_project(project_id: str, user=None) -> str:
     except Exception as e:
         print(f"Error calling Gemini API for summary: {e}")
         return "Could not generate summary due to an AI model error."
+
+def generate_repository_summary(full_name: str, repository_data: Dict[str, Any], user: Optional[UserInDB] = None) -> str:
+    """
+    Generate an AI-powered summary for an external repository
+    """
+    try:
+        repo_info = repository_data.get("repository_info", {})
+        readme = repository_data.get("readme", "")
+        recent_commits = repository_data.get("recent_commits", [])
+        languages = repository_data.get("languages", {})
+
+        # Build context for AI
+        context_parts = []
+
+        # Repository basic info
+        context_parts.append(f"Repository: {full_name}")
+        if repo_info.get("description"):
+            context_parts.append(f"Description: {repo_info['description']}")
+
+        # Statistics
+        stats = []
+        if repo_info.get("stars"):
+            stats.append(f"{repo_info['stars']} stars")
+        if repo_info.get("forks"):
+            stats.append(f"{repo_info['forks']} forks")
+        if repo_info.get("language"):
+            stats.append(f"Primary language: {repo_info['language']}")
+        if stats:
+            context_parts.append(f"Statistics: {', '.join(stats)}")
+
+        # Languages breakdown
+        if languages:
+            top_languages = sorted(languages.items(), key=lambda x: x[1], reverse=True)[:3]
+            lang_text = ", ".join([f"{lang} ({perc:.1f}%)" for lang, perc in top_languages])
+            context_parts.append(f"Top languages: {lang_text}")
+
+        # Recent activity
+        if recent_commits:
+            context_parts.append(f"Recent commits ({len(recent_commits)}):")
+            for commit in recent_commits[:3]:
+                context_parts.append(f"- {commit.get('message', '')[:100]}...")
+
+        # README content
+        if readme:
+            context_parts.append(f"README content (excerpt):\n{readme}")
+
+        # Topics/tags
+        if repo_info.get("topics"):
+            context_parts.append(f"Topics: {', '.join(repo_info['topics'][:5])}")
+
+        context = "\n\n".join(context_parts)
+
+        prompt = f"""
+        Analyze the following GitHub repository and provide a comprehensive, engaging summary in 2-3 sentences.
+        Focus on what the project does, its key features, technology stack, and why it might be useful or interesting.
+        Be specific about the project's purpose and highlight any notable aspects.
+
+        Repository Information:
+        {context}
+
+        Provide a clear, informative summary that would help someone quickly understand what this repository is about:
+        """
+
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(prompt)
+
+        summary = response.text.strip()
+
+        # Add some basic fallback info if AI response is too short
+        if len(summary) < 50:
+            fallback_parts = [f"{full_name} is a {repo_info.get('language', 'software')} project"]
+            if repo_info.get("description"):
+                fallback_parts.append(repo_info["description"])
+            if repo_info.get("stars", 0) > 100:
+                fallback_parts.append(f"with {repo_info['stars']} stars on GitHub")
+            summary = ". ".join(fallback_parts) + "."
+
+        return summary
+
+    except Exception as e:
+        print(f"Error generating repository summary: {e}")
+        # Fallback summary
+        repo_info = repository_data.get("repository_info", {})
+        return f"{full_name} is a {repo_info.get('language', 'software')} repository with {repo_info.get('stars', 0)} stars. {repo_info.get('description', 'No description available.')}"

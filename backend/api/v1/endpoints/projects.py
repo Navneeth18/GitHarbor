@@ -42,6 +42,22 @@ def get_project_details(project_id: str, current_user: UserInDB = Depends(get_cu
         project_details = github_service.get_live_project_details(decoded_project_id, current_user)
         print(f"DEBUG: Project details received: {len(project_details) if project_details else 0} items")
         
+        # Check if we got any meaningful data
+        has_data = (
+            project_details.get("repository_stats", {}).get("stars") is not None or
+            project_details.get("commits") or
+            project_details.get("contributors") or
+            project_details.get("documentation")
+        )
+        
+        if not has_data:
+            print(f"DEBUG: No data received, trying public fallback")
+            # Try public fallback without user token
+            public_details = github_service.get_live_project_details(decoded_project_id, None)
+            if public_details.get("repository_stats", {}).get("stars") is not None:
+                project_details = public_details
+                print(f"DEBUG: Public fallback successful")
+        
         # Get AI summary
         try:
             from services import ai_service
@@ -72,6 +88,24 @@ def get_project_details(project_id: str, current_user: UserInDB = Depends(get_cu
         import traceback
         print(f"ERROR: Traceback: {traceback.format_exc()}")
         
+        # Try public fallback as last resort
+        try:
+            print(f"DEBUG: Trying public fallback as last resort")
+            public_details = github_service.get_live_project_details(decoded_project_id, None)
+            if public_details.get("repository_stats", {}).get("stars") is not None:
+                return {
+                    "project_id": decoded_project_id,
+                    "summary": f"Project {decoded_project_id} - Public repository data available.",
+                    "repository_stats": public_details.get("repository_stats", {}),
+                    "contributors": public_details.get("contributors", []),
+                    "commits": public_details.get("commits", []),
+                    "documentation": public_details.get("documentation", ""),
+                    "pushes": public_details.get("pushes", []),
+                    "merges": public_details.get("merges", [])
+                }
+        except Exception as fallback_error:
+            print(f"ERROR: Public fallback also failed: {fallback_error}")
+        
         # Return fallback data instead of throwing 404
         print(f"DEBUG: Returning fallback data for {decoded_project_id}")
         return {
@@ -87,6 +121,75 @@ def get_project_details(project_id: str, current_user: UserInDB = Depends(get_cu
             "documentation": f"# {decoded_project_id}\n\nThis repository's documentation is not currently accessible. This could be due to:\n- Private repository access restrictions\n- Repository not found\n- GitHub API rate limiting\n\nPlease ensure you have the necessary permissions to access this repository.",
             "pushes": [],
             "merges": []
+        }
+
+@router.get("/{project_id:path}/issues")
+def get_project_issues(project_id: str, current_user: UserInDB = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Returns issues for a specific project
+    """
+    decoded_project_id = urllib.parse.unquote(project_id)
+    print(f"DEBUG: Getting issues for {decoded_project_id}")
+    
+    try:
+        # Get issues using the user's GitHub token
+        issues = github_service.get_project_issues(decoded_project_id, current_user)
+        return {
+            "project_id": decoded_project_id,
+            "issues": issues
+        }
+    except Exception as e:
+        print(f"ERROR: Error getting issues for {decoded_project_id}: {e}")
+        return {
+            "project_id": decoded_project_id,
+            "issues": [],
+            "error": str(e)
+        }
+
+@router.get("/{project_id:path}/pull-requests")
+def get_project_pull_requests(project_id: str, current_user: UserInDB = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Returns pull requests for a specific project
+    """
+    decoded_project_id = urllib.parse.unquote(project_id)
+    print(f"DEBUG: Getting pull requests for {decoded_project_id}")
+    
+    try:
+        # Get pull requests using the user's GitHub token
+        pull_requests = github_service.get_project_pull_requests(decoded_project_id, current_user)
+        return {
+            "project_id": decoded_project_id,
+            "pull_requests": pull_requests
+        }
+    except Exception as e:
+        print(f"ERROR: Error getting pull requests for {decoded_project_id}: {e}")
+        return {
+            "project_id": decoded_project_id,
+            "pull_requests": [],
+            "error": str(e)
+        }
+
+@router.get("/{project_id:path}/commits")
+def get_project_commits(project_id: str, current_user: UserInDB = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Returns commit history for a specific project
+    """
+    decoded_project_id = urllib.parse.unquote(project_id)
+    print(f"DEBUG: Getting commits for {decoded_project_id}")
+    
+    try:
+        # Get commits using the user's GitHub token
+        commits = github_service.get_project_commits(decoded_project_id, current_user)
+        return {
+            "project_id": decoded_project_id,
+            "commits": commits
+        }
+    except Exception as e:
+        print(f"ERROR: Error getting commits for {decoded_project_id}: {e}")
+        return {
+            "project_id": decoded_project_id,
+            "commits": [],
+            "error": str(e)
         }
 
 # The rest of the project and chat endpoints can remain largely the same,

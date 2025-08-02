@@ -35,3 +35,7 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Kortex AI Backend (v2 with Auth)"}
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "message": "Backend is running"}

@@ -3,9 +3,15 @@
 # Global GitHub search endpoints
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, Optional
+from pydantic import BaseModel
 from models.user import UserInDB
-from services import github_service
+from services import github_service, ai_service
 from api.v1.dependencies import get_current_user
+
+class RepositorySummaryRequest(BaseModel):
+    owner: str
+    repo: str
+    full_name: str
 
 router = APIRouter()
 
@@ -225,3 +231,47 @@ def search_all_global(
     except Exception as e:
         print(f"Error in global search: {e}")
         raise HTTPException(status_code=500, detail="Internal server error during global search")
+
+@router.post("/repository-summary")
+def get_repository_summary(
+    request: RepositorySummaryRequest,
+    current_user: UserInDB = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Get detailed summary for a specific repository including AI analysis
+    """
+    try:
+        # Get repository details from GitHub
+        repo_details = github_service.get_external_repository_details(
+            owner=request.owner,
+            repo=request.repo,
+            user=current_user
+        )
+
+        if not repo_details.get("success"):
+            raise HTTPException(status_code=404, detail="Repository not found or inaccessible")
+
+        # Generate AI summary
+        try:
+            summary = ai_service.generate_repository_summary(
+                full_name=request.full_name,
+                repository_data=repo_details["data"],
+                user=current_user
+            )
+        except Exception as ai_error:
+            print(f"AI summary failed: {ai_error}")
+            summary = f"Repository {request.full_name} - AI summary not available at the moment."
+
+        return {
+            "summary": summary,
+            "recent_commits": repo_details["data"].get("recent_commits", []),
+            "readme": repo_details["data"].get("readme", ""),
+            "languages": repo_details["data"].get("languages", {}),
+            "repository_info": repo_details["data"].get("repository_info", {})
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting repository summary: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error during repository summary")

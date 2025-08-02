@@ -74,13 +74,42 @@ function App() {
         setAccessToken(token);
         setIsAuthenticated(true);
       } else {
-        console.log('Token is invalid, clearing storage');
+        console.log('Token is invalid, attempting refresh');
+        await refreshToken();
+      }
+    } catch (error) {
+      console.error('Token validation failed:', error);
+      await refreshToken();
+    }
+  };
+
+  /**
+   * Refresh GitHub token
+   */
+  const refreshToken = async () => {
+    try {
+      console.log('Attempting to refresh GitHub token...');
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
+      const response = await fetch(`${backendUrl}/api/v1/auth/refresh-token`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Redirecting to GitHub for re-authentication');
+        window.location.href = data.auth_url;
+      } else {
+        console.log('Token refresh failed, clearing storage');
         localStorage.removeItem('access_token');
         setAccessToken(null);
         setIsAuthenticated(false);
       }
     } catch (error) {
-      console.error('Token validation failed:', error);
+      console.error('Token refresh failed:', error);
       localStorage.removeItem('access_token');
       setAccessToken(null);
       setIsAuthenticated(false);
