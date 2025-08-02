@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { Send, Bot, User, Loader2, ExternalLink } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * ChatPanel component for interactive AI conversations about the project
  * Handles question submission and displays chat history with sources
  */
-function ChatPanel({ projectId, accessToken }) {
+function ChatPanel({ projectId }) {
+  const { makeAuthenticatedRequest } = useAuth();
+  
   // State for chat messages, input, and loading
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState('');
@@ -39,12 +42,8 @@ function ChatPanel({ projectId, accessToken }) {
     setError(null);
 
     try {
-      const response = await fetch(`${backendUrl}/api/v1/chat/ask`, {
+      const response = await makeAuthenticatedRequest(`${backendUrl}/api/v1/chat/ask`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           project_id: projectId,
           question: currentQuestion
@@ -59,6 +58,11 @@ function ChatPanel({ projectId, accessToken }) {
       }
 
       const data = await response.json();
+
+      // Add debugging to see what we're actually receiving
+      console.log('Chat response data:', data);
+      console.log('Response answer:', data.answer);
+      console.log('Response sources:', data.sources);
 
       // Add AI response to chat history
       const aiMessage = {
@@ -97,7 +101,7 @@ function ChatPanel({ projectId, accessToken }) {
   };
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg flex flex-col h-[650px] ml-4">
+    <div className="bg-gray-800 border border-gray-700 rounded-lg flex flex-col h-[calc(100vh-12rem)] max-h-[600px] min-h-[400px] ml-4">
       {/* Chat header */}
       <div className="flex items-center space-x-2 p-4 border-b border-gray-700">
         <Bot className="w-5 h-5 text-blue-400" />
@@ -187,7 +191,7 @@ function ChatPanel({ projectId, accessToken }) {
             {error}
           </div>
         )}
-        
+
         <form onSubmit={handleSubmit} className="flex space-x-2">
           <input
             type="text"

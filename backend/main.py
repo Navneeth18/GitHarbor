@@ -8,8 +8,16 @@ from services.db_service import client # Import the client
 
 app = FastAPI(title="Kortex AI Backend")
 
-# CORS Middleware
-origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+# --- CORS (Cross-Origin Resource Sharing) ---
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -29,3 +37,7 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Kortex AI Backend (v2 with Auth)"}
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "message": "Backend is running"}

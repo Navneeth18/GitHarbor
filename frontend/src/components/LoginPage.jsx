@@ -37,10 +37,18 @@ function LoginPage({ onLoginSuccess }) {
       setError(null);
       
       const response = await fetch(`${backendUrl}/api/v1/auth/login`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const loginUrl = await response.text();
       
+      // Remove quotes if the response is JSON-encoded
+      const cleanUrl = loginUrl.replace(/^"|"$/g, '');
+      
       // Redirect to GitHub OAuth
-      window.location.href = loginUrl;
+      window.location.href = cleanUrl;
       
     } catch (err) {
       console.error('Login error:', err);
