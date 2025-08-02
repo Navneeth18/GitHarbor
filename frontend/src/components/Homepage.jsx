@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Github, Loader2, AlertCircle, Search, X, Filter, Globe } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Homepage component that displays a grid of available GitHub projects
  * Fetches project list from the backend API using user's authentication
  */
-function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
+function Homepage({ onProjectSelect, initialSearchQuery }) {
+  const { makeAuthenticatedRequest } = useAuth();
+  
   // State for projects data, loading, and error handling
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,20 +28,15 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
   /**
    * Fetch projects from the backend API
    */
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
-      console.log('Fetching projects with token:', accessToken ? 'Token exists' : 'No token');
+      console.log('Fetching projects...');
       console.log('Backend URL:', backendUrl);
       
-      const response = await fetch(`${backendUrl}/api/v1/projects/`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await makeAuthenticatedRequest(`${backendUrl}/api/v1/projects/`);
       
       console.log('Response status:', response.status);
       console.log('Response headers:', response.headers);
@@ -60,12 +58,29 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [makeAuthenticatedRequest, backendUrl]);
+
+  /**
+   * Extract a snippet of text around the search query
+   */
+  const extractSnippet = useCallback((text, query, maxLength = 150) => {
+    const index = text.toLowerCase().indexOf(query.toLowerCase());
+    if (index === -1) return text.substring(0, maxLength) + '...';
+    
+    const start = Math.max(0, index - maxLength / 2);
+    const end = Math.min(text.length, index + query.length + maxLength / 2);
+    let snippet = text.substring(start, end);
+    
+    if (start > 0) snippet = '...' + snippet;
+    if (end < text.length) snippet = snippet + '...';
+    
+    return snippet;
+  }, []);
 
   /**
    * Search through projects and their content
    */
-  const searchProjects = async (query) => {
+  const searchProjects = useCallback(async (query) => {
     if (!query.trim()) {
       setFilteredProjects(projects);
       setSearchResults([]);
@@ -86,12 +101,7 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
       const contentResults = [];
       for (const project of projects) {
         try {
-          const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(project.id)}`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-          });
+          const response = await makeAuthenticatedRequest(`${backendUrl}/api/v1/projects/${encodeURIComponent(project.id)}`);
           if (response.ok) {
             const projectData = await response.json();
 
@@ -99,59 +109,42 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
             if (projectData.documentation &&
                 projectData.documentation.toLowerCase().includes(query.toLowerCase())) {
               contentResults.push({
-                ...project,
-                matchType: 'documentation',
-                snippet: extractSnippet(projectData.documentation, query)
+                type: 'documentation',
+                project: project,
+                snippet: extractSnippet(projectData.documentation, query),
+                url: `#/docs/${encodeURIComponent(project.id)}`
               });
             }
 
             // Search in commits
             if (projectData.commits) {
-              const commitMatches = projectData.commits.filter(commit =>
-                commit.commit?.message?.toLowerCase().includes(query.toLowerCase())
-              );
-              if (commitMatches.length > 0) {
-                contentResults.push({
-                  ...project,
-                  matchType: 'commits',
-                  snippet: `Found in ${commitMatches.length} commit(s): ${commitMatches[0].commit.message.substring(0, 100)}...`
-                });
+              for (const commit of projectData.commits.slice(0, 5)) {
+                if (commit.commit && commit.commit.message &&
+                    commit.commit.message.toLowerCase().includes(query.toLowerCase())) {
+                  contentResults.push({
+                    type: 'commit',
+                    project: project,
+                    snippet: extractSnippet(commit.commit.message, query),
+                    url: commit.html_url
+                  });
+                }
               }
             }
           }
-        } catch (err) {
-          console.warn(`Failed to search in project ${project.id}:`, err);
+        } catch (error) {
+          console.error(`Error searching project ${project.id}:`, error);
         }
       }
 
-      setFilteredProjects(projectMatches);
       setSearchResults(contentResults);
-    } catch (err) {
-      console.error('Search error:', err);
+      setFilteredProjects(projectMatches);
+    } catch (error) {
+      console.error('Search error:', error);
+      setError('Search failed. Please try again.');
     } finally {
       setIsSearching(false);
     }
-  };
-
-  /**
-   * Extract snippet around search term
-   */
-  const extractSnippet = (text, query, maxLength = 150) => {
-    const lowerText = text.toLowerCase();
-    const lowerQuery = query.toLowerCase();
-    const index = lowerText.indexOf(lowerQuery);
-
-    if (index === -1) return text.substring(0, maxLength) + '...';
-
-    const start = Math.max(0, index - 50);
-    const end = Math.min(text.length, index + query.length + 50);
-
-    let snippet = text.substring(start, end);
-    if (start > 0) snippet = '...' + snippet;
-    if (end < text.length) snippet = snippet + '...';
-
-    return snippet;
-  };
+  }, [makeAuthenticatedRequest, backendUrl, projects, extractSnippet]);
 
   /**
    * Handle search input change
@@ -159,12 +152,14 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
   const handleSearchChange = (e) => {
     const query = e.target.value;
     setSearchQuery(query);
-
-    // Debounce search
-    clearTimeout(window.searchTimeout);
-    window.searchTimeout = setTimeout(() => {
+    
+    if (query.trim()) {
       searchProjects(query);
-    }, 300);
+    } else {
+      setFilteredProjects(projects);
+      setSearchResults([]);
+      setIsSearching(false);
+    }
   };
 
   /**
@@ -177,12 +172,10 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
     setIsSearching(false);
   };
 
-  // Fetch projects on component mount or when accessToken changes
+  // Fetch projects on component mount
   useEffect(() => {
-    if (accessToken) {
-      fetchProjects();
-    }
-  }, [accessToken]);
+    fetchProjects();
+  }, [fetchProjects]);
 
   // Handle initial search query
   useEffect(() => {
@@ -190,7 +183,7 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
       setSearchQuery(initialSearchQuery);
       searchProjects(initialSearchQuery);
     }
-  }, [initialSearchQuery, projects]);
+  }, [initialSearchQuery, projects, searchProjects]);
 
   // Loading state
   if (loading) {
@@ -298,20 +291,30 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {searchResults.map((result, index) => (
               <div
-                key={`${result.id}-${index}`}
-                onClick={() => onProjectSelect(result.id)}
+                key={`${result.project.id}-${index}`}
+                onClick={() => onProjectSelect(result.project.id)}
                 className="bg-gray-800 border border-blue-600 rounded-lg p-4 hover:bg-gray-750 cursor-pointer transition-all duration-200"
               >
                 <div className="flex items-center space-x-3 mb-2">
                   <Github className="w-5 h-5 text-blue-400" />
-                  <h4 className="text-white font-medium">{result.name}</h4>
+                  <h4 className="text-white font-medium">{result.project.name}</h4>
                   <span className="px-2 py-1 bg-blue-600 text-blue-100 text-xs rounded-full">
-                    {result.matchType}
+                    {result.type}
                   </span>
                 </div>
                 <p className="text-gray-300 text-sm leading-relaxed">
                   {result.snippet}
                 </p>
+                {result.url && (
+                  <a
+                    href={result.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline text-sm mt-2 block"
+                  >
+                    View on GitHub
+                  </a>
+                )}
               </div>
             ))}
           </div>
@@ -330,7 +333,10 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
           {filteredProjects.map((project) => (
           <div
             key={project.id}
-            onClick={() => onProjectSelect(project.id)}
+            onClick={() => {
+              console.log('Project clicked:', project.id, project.name);
+              onProjectSelect(project.id);
+            }}
             className="bg-gray-800 border border-gray-700 rounded-lg p-6 hover:bg-gray-750 hover:border-gray-600 cursor-pointer transition-all duration-200 transform hover:scale-105 hover:shadow-lg"
           >
             <div className="flex items-center space-x-3 mb-4">
@@ -378,7 +384,6 @@ function Homepage({ onProjectSelect, accessToken, initialSearchQuery }) {
       {/* Global Search Modal */}
       {showGlobalSearch && (
         <GlobalSearch
-          accessToken={accessToken}
           onClose={() => setShowGlobalSearch(false)}
         />
       )}

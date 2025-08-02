@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   X, Star, GitFork, Eye, Calendar, User, Code, FileText, 
   ExternalLink, Download, BookOpen, Activity, Clock, 
   GitCommit, AlertCircle, Loader2, Copy, Check
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
-const RepositorySummaryModal = ({ repository, onClose, accessToken }) => {
+const RepositorySummaryModal = ({ repository, onClose }) => {
+  const { makeAuthenticatedRequest } = useAuth();
+  
   const [summary, setSummary] = useState('');
   const [recentCommits, setRecentCommits] = useState([]);
   const [readme, setReadme] = useState('');
@@ -17,24 +20,14 @@ const RepositorySummaryModal = ({ repository, onClose, accessToken }) => {
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
-  useEffect(() => {
-    if (repository) {
-      fetchRepositoryDetails();
-    }
-  }, [repository]);
-
-  const fetchRepositoryDetails = async () => {
+  const fetchRepositoryDetails = useCallback(async () => {
     setLoading(true);
     setError('');
 
     try {
       // Fetch repository summary from our backend
-      const summaryResponse = await fetch(`${backendUrl}/api/v1/search/repository-summary`, {
+      const summaryResponse = await makeAuthenticatedRequest(`${backendUrl}/api/v1/search/repository-summary`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           owner: repository.owner.login,
           repo: repository.name,
@@ -59,7 +52,13 @@ const RepositorySummaryModal = ({ repository, onClose, accessToken }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [repository, makeAuthenticatedRequest, backendUrl]);
+
+  useEffect(() => {
+    if (repository) {
+      fetchRepositoryDetails();
+    }
+  }, [repository, fetchRepositoryDetails]);
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString();

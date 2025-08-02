@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft,
   BookOpen,
@@ -18,12 +18,15 @@ import {
   Tag
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Full Documentation component that displays comprehensive repository information
  * without sidebar - dedicated full-width documentation view
  */
 function FullDocumentation({ projectId, onBack }) {
+  const { makeAuthenticatedRequest } = useAuth();
+  
   const [projectData, setProjectData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,16 +34,19 @@ function FullDocumentation({ projectId, onBack }) {
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
   /**
-   * Fetch project details from the backend API
+   * Fetch project data from the backend API
    */
-  const fetchProjectData = async () => {
+  const fetchProjectData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}`);
+      const response = await makeAuthenticatedRequest(`${backendUrl}/api/v1/projects/${encodeURIComponent(projectId)}`);
       
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication expired. Please login again.');
+        }
         throw new Error(`Failed to fetch project data: ${response.status}`);
       }
       
@@ -48,17 +54,17 @@ function FullDocumentation({ projectId, onBack }) {
       setProjectData(data);
     } catch (err) {
       console.error('Error fetching project data:', err);
-      setError('Failed to load project data. Please try again.');
+      setError(err.message || 'Failed to load project data. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, makeAuthenticatedRequest, backendUrl]);
 
   useEffect(() => {
     if (projectId) {
       fetchProjectData();
     }
-  }, [projectId]);
+  }, [projectId, fetchProjectData]);
 
   /**
    * Helper function to format dates

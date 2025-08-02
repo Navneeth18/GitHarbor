@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { Send, Bot, User, Loader2, ExternalLink } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * ChatPanel component for interactive AI conversations about the project
  * Handles question submission and displays chat history with sources
  */
-function ChatPanel({ projectId, accessToken }) {
+function ChatPanel({ projectId }) {
+  const { makeAuthenticatedRequest } = useAuth();
+  
   // State for chat messages, input, and loading
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState('');
@@ -39,12 +42,8 @@ function ChatPanel({ projectId, accessToken }) {
     setError(null);
 
     try {
-      const response = await fetch(`${backendUrl}/api/v1/chat/ask`, {
+      const response = await makeAuthenticatedRequest(`${backendUrl}/api/v1/chat/ask`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           project_id: projectId,
           question: currentQuestion
