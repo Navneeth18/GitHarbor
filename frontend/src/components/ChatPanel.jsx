@@ -59,6 +59,11 @@ function ChatPanel({ projectId }) {
 
       const data = await response.json();
 
+      // Add debugging to see what we're actually receiving
+      console.log('Chat response data:', data);
+      console.log('Response answer:', data.answer);
+      console.log('Response sources:', data.sources);
+
       // Add AI response to chat history
       const aiMessage = {
         type: 'ai',

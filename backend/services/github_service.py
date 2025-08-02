@@ -87,7 +87,13 @@ def make_github_request(url: str, user: UserInDB = None, timeout: int = 10) -> D
         elif response.status_code == 401:
             return {"success": False, "error": "Unauthorized - token may be invalid"}
         elif response.status_code == 403:
-            return {"success": False, "error": "Rate limited or access forbidden"}
+            # Check if it's rate limiting
+            if "rate limit" in response.text.lower():
+                return {"success": False, "error": "Rate limited - try again later"}
+            else:
+                return {"success": False, "error": "Access forbidden - repository may be private"}
+        elif response.status_code == 429:
+            return {"success": False, "error": "Rate limited - too many requests"}
         else:
             return {"success": False, "error": f"HTTP {response.status_code}: {response.text}"}
             
@@ -661,22 +667,49 @@ def get_live_project_details(project_id: str, user: UserInDB = None) -> Dict[str
     readme_result = make_github_request(readme_url, user)
     events_result = make_github_request(events_url, user)
 
-    # Process repository data
-    repo_stats = {}
+    # Process repository data with fallback
+    repo_stats = {
+        "name": project_id,
+        "description": "Repository information not available",
+        "language": "Unknown",
+        "stars": 0,
+        "forks": 0,
+        "watchers": 0,
+        "open_issues": 0,
+        "size": 0,
+        "created_at": None,
+        "updated_at": None,
+        "pushed_at": None,
+        "default_branch": "main",
+        "homepage": None,
+        "topics": [],
+        "license": None,
+        "visibility": "unknown",
+        "archived": False,
+        "disabled": False,
+        "has_issues": False,
+        "has_projects": False,
+        "has_wiki": False,
+        "has_pages": False,
+        "has_downloads": False,
+        "network_count": 0,
+        "subscribers_count": 0
+    }
+    
     if repo_result["success"]:
         repo_data = repo_result["data"]
-        repo_stats = {
+        repo_stats.update({
             "stars": repo_data.get('stargazers_count', 0),
             "forks": repo_data.get('forks_count', 0),
             "watchers": repo_data.get('watchers_count', 0),
             "open_issues": repo_data.get('open_issues_count', 0),
             "size": repo_data.get('size', 0),
-            "language": repo_data.get('language'),
+            "language": repo_data.get('language', 'Unknown'),
             "created_at": repo_data.get('created_at'),
             "updated_at": repo_data.get('updated_at'),
             "pushed_at": repo_data.get('pushed_at'),
-            "default_branch": repo_data.get('default_branch'),
-            "description": repo_data.get('description'),
+            "default_branch": repo_data.get('default_branch', 'main'),
+            "description": repo_data.get('description', 'No description available'),
             "homepage": repo_data.get('homepage'),
             "topics": repo_data.get('topics', []),
             "license": repo_data.get('license', {}).get('name') if repo_data.get('license') else None,
@@ -690,7 +723,7 @@ def get_live_project_details(project_id: str, user: UserInDB = None) -> Dict[str
             "has_downloads": repo_data.get('has_downloads', False),
             "network_count": repo_data.get('network_count', 0),
             "subscribers_count": repo_data.get('subscribers_count', 0)
-        }
+        })
     else:
         print(f"Failed to get repo data: {repo_result['error']}")
 
@@ -798,29 +831,71 @@ def get_project_commits(project_id: str, user: UserInDB = None) -> List[Dict[str
         print(f"Failed to fetch commits: {result['error']}")
         return []
 
-def get_text_content_for_rag(project_id: str) -> List[Dict[str, str]]:
+def get_text_content_for_rag(project_id: str, user: UserInDB = None) -> List[Dict[str, str]]:
     """ Gathers all relevant text content for the RAG pipeline. """
     print(f"Gathering all text content for RAG pipeline for {project_id}...")
     documents = []
-    details = get_live_project_details(project_id)
-    if details.get("documentation"):
-        documents.append({"id": f"{project_id}_readme", "content": f"Project README:\n{details['documentation']}", "metadata": {"source": "README.md"}})
+    
+    try:
+        # Get project details with README
+        details = get_live_project_details(project_id, user)
+        if details.get("documentation"):
+            documents.append({
+                "id": f"{project_id}_readme", 
+                "content": f"Project README:\n{details['documentation']}", 
+                "metadata": {"source": "README.md", "type": "documentation"}
+            })
 
-    headers = {"Accept": "application/vnd.github.v3+json"}
+        # Get issues using authenticated request
+        issues_url = f"{REPOS_BASE_URL}{project_id}/issues?state=all&per_page=50&sort=updated&direction=desc"
+        issues_result = make_github_request(issues_url, user)
+        if issues_result["success"]:
+            for item in issues_result["data"]:
+                if item.get('body') and 'pull_request' not in item:  # Filter out PRs
+                    documents.append({
+                        "id": f"issue_{item['id']}", 
+                        "content": f"Issue Title: {item.get('title', '')}\n\nBody:\n{item.get('body')}", 
+                        "metadata": {"source": item.get('html_url', ''), "type": "issue"}
+                    })
 
-    issues_url = f"{REPOS_BASE_URL}{project_id}/issues?state=all&per_page=100"
-    issues_response = requests.get(issues_url, headers=headers)
-    for item in (issues_response.json() if issues_response.ok else []):
-        if item.get('body'):
-            documents.append({"id": f"issue_{item['id']}", "content": f"Issue Title: {item.get('title', '')}\n\nBody:\n{item.get('body')}", "metadata": {"source": item.get('html_url', '')}})
+        # Get pull requests using authenticated request
+        prs_url = f"{REPOS_BASE_URL}{project_id}/pulls?state=all&per_page=50&sort=updated&direction=desc"
+        prs_result = make_github_request(prs_url, user)
+        if prs_result["success"]:
+            for item in prs_result["data"]:
+                if item.get('body'):
+                    documents.append({
+                        "id": f"pr_{item['id']}", 
+                        "content": f"Pull Request Title: {item.get('title', '')}\n\nBody:\n{item.get('body')}", 
+                        "metadata": {"source": item.get('html_url', ''), "type": "pull_request"}
+                    })
 
-    prs_url = f"{REPOS_BASE_URL}{project_id}/pulls?state=all&per_page=100"
-    prs_response = requests.get(prs_url, headers=headers)
-    for item in (prs_response.json() if prs_response.ok else []):
-        if item.get('body'):
-            documents.append({"id": f"pr_{item['id']}", "content": f"Pull Request Title: {item.get('title', '')}\n\nBody:\n{item.get('body')}", "metadata": {"source": item.get('html_url', '')}})
+        # Get recent commits for context
+        commits_url = f"{REPOS_BASE_URL}{project_id}/commits?per_page=20"
+        commits_result = make_github_request(commits_url, user)
+        if commits_result["success"]:
+            commit_messages = []
+            for commit in commits_result["data"][:10]:  # Last 10 commits
+                message = commit.get('commit', {}).get('message', '')
+                if message:
+                    commit_messages.append(message)
+            
+            if commit_messages:
+                documents.append({
+                    "id": f"{project_id}_commits", 
+                    "content": f"Recent Commits:\n" + "\n".join([f"- {msg}" for msg in commit_messages]), 
+                    "metadata": {"source": f"https://github.com/{project_id}/commits", "type": "commits"}
+                })
 
-    return documents
+        print(f"Gathered {len(documents)} documents for RAG pipeline")
+        return documents
+        
+    except Exception as e:
+        print(f"Error gathering RAG content for {project_id}: {e}")
+        # Return at least the README if available
+        if documents:
+            return documents
+        return []
 
 def get_formatted_contributor_stats(project_id: str) -> str:
     """ Returns formatted contributor statistics for display """

@@ -192,6 +192,33 @@ def get_project_commits(project_id: str, current_user: UserInDB = Depends(get_cu
             "error": str(e)
         }
 
+@router.get("/{project_id:path}/summary")
+def get_project_summary(project_id: str, current_user: UserInDB = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Returns AI-generated summary for a specific project
+    """
+    decoded_project_id = urllib.parse.unquote(project_id)
+    print(f"DEBUG: Getting AI summary for {decoded_project_id}")
+    
+    try:
+        from services import ai_service
+        
+        # Generate the summary using the AI service
+        # The AI service will handle getting the GitHub data efficiently
+        summary = ai_service.summarize_project(decoded_project_id, current_user)
+        
+        return {
+            "project_id": decoded_project_id,
+            "summary": summary
+        }
+    except Exception as e:
+        print(f"ERROR: Error getting AI summary for {decoded_project_id}: {e}")
+        return {
+            "project_id": decoded_project_id,
+            "summary": f"Project {decoded_project_id} - Summary not available at the moment.",
+            "error": str(e)
+        }
+
 # The rest of the project and chat endpoints can remain largely the same,
 # but their internal logic will now rely on the user's token for any
 # GitHub API calls if needed. The security dependency `Depends(get_current_user)`
