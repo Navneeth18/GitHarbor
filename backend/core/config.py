@@ -19,6 +19,12 @@ GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
-if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY not found in .env file")
+# Provide default values for optional configurations
+if not GOOGLE_API_KEY or GOOGLE_API_KEY == "your_google_api_key_here":
+    print("WARNING: GOOGLE_API_KEY not configured. AI features will be limited.")
+    GOOGLE_API_KEY = None
+
+if not SECRET_KEY or SECRET_KEY == "your_secret_key_here_make_it_long_and_random":
+    print("WARNING: SECRET_KEY not configured. Using default key (not secure for production).")
+    SECRET_KEY = "default_secret_key_change_in_production_environment"
 
